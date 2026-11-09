@@ -1,0 +1,11 @@
+{
+  "short_name": "eXpande",
+  "name": "eXpande - Gestão de Vendas",
+  "icons": [
+    { "src": "favicon.ico", "sizes": "64x64", "type": "image/x-icon" }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2563EB",
+  "background_color": "#F8FAFC"
+}
