@@ -15,8 +15,11 @@ const getGpsLocation=()=>new Promise(resolve=>{
     {timeout:15000,maximumAge:0}
   )
 })
-const EGESTOR_API='https://qtogmmgkpnpkmvnkoxsz.supabase.co/functions/v1/egestor-api'
-const ADMIN_API='https://qtogmmgkpnpkmvnkoxsz.supabase.co/functions/v1/admin-api'
+// Endereços das Edge Functions vêm do projeto Supabase configurado (REACT_APP_SUPABASE_URL).
+// Assim a 3.0 em testes nunca chama as funções do banco real.
+const FUNCTIONS_URL=`${process.env.REACT_APP_SUPABASE_URL}/functions/v1`
+const EGESTOR_API=`${FUNCTIONS_URL}/egestor-api`
+const ADMIN_API=`${FUNCTIONS_URL}/admin-api`
 const ADMIN_ID='7ad867ea-496c-412c-8acd-5cc7c21eca0e'
 const Badge=({color,children})=><span style={{background:color+'18',color,border:`1px solid ${color}33`,borderRadius:6,padding:'2px 8px',fontSize:11,fontWeight:600}}>{children}</span>
 const KpiCard=({label,value,sub,color=ACCENT})=><div style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:12,padding:'14px 16px',flex:1,minWidth:130}}><div style={{fontSize:11,color:MUTED,fontWeight:600,marginBottom:4,textTransform:'uppercase'}}>{label}</div><div style={{fontSize:22,fontWeight:800,color}}>{value}</div>{sub&&<div style={{fontSize:11,color:MUTED,marginTop:2}}>{sub}</div>}</div>
@@ -1440,7 +1443,7 @@ return view==='compras'?<>
 <div style={{background:CARD,border:`1px solid ${BORDER}`,padding:'14px 16px'}}>
 <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>🔄 Sincronizar Produtos</div>
 <div style={{fontSize:12,color:MUTED,marginBottom:12}}>Atualiza todos os produtos do eGestor no CRM.</div>
-<button onClick={async()=>{setConfigLoading(true);try{await fetch('https://qtogmmgkpnpkmvnkoxsz.supabase.co/functions/v1/sync-produtos');showToast('Produtos sincronizados!')}catch{showToast('Erro ao sincronizar','error')}setConfigLoading(false)}} disabled={configLoading} style={{width:'100%',background:WARNING,color:'#fff',border:'none',borderRadius:8,padding:'12px 0',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+<button onClick={async()=>{setConfigLoading(true);try{await fetch(`${FUNCTIONS_URL}/sync-produtos`);showToast('Produtos sincronizados!')}catch{showToast('Erro ao sincronizar','error')}setConfigLoading(false)}} disabled={configLoading} style={{width:'100%',background:WARNING,color:'#fff',border:'none',borderRadius:8,padding:'12px 0',fontWeight:700,fontSize:14,cursor:'pointer'}}>
 📦 Sincronizar Produtos
 </button>
 </div>
