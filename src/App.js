@@ -3,6 +3,7 @@ import*as XLSX from 'xlsx'
 import{supabase}from './lib/supabase'
 import logoBase64 from './lib/logoBase64'
 import{useAuth}from './lib/useAuth'
+import GestaoUsuarios from './pages/Usuarios'
 const ACCENT='#2563EB',ACCENT_LIGHT='#EFF6FF',SUCCESS='#16A34A',WARNING='#D97706',DANGER='#DC2626',SURFACE='#F8FAFC',CARD='#FFFFFF',BORDER='#E2E8F0',TEXT='#0F172A',MUTED='#64748B'
 const fmt=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
 const today=()=>new Date().toISOString().split('T')[0]
@@ -1379,7 +1380,7 @@ return view==='compras'?<>
 })()}
 </div>}
 {activeTab==='config'&&(usa3?pode('usuarios.ver'):isPrivileged)&&<div>
-{isAdmin&&<>
+{usa3?<GestaoUsuarios supabase={supabase} functionsUrl={FUNCTIONS_URL} pode={pode} userId={user?.id} showToast={showToast}/>:isAdmin&&<>
 <div style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:12,padding:'14px 16px',marginBottom:12}}>
 <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>⚙️ Configurações</div>
 <button onClick={carregarConfig} disabled={configLoading} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:8,padding:'10px 0',fontWeight:700,fontSize:14,cursor:'pointer',marginBottom:12}}>

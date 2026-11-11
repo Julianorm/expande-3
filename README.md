@@ -23,5 +23,12 @@ Cópia fiel (conferida byte a byte em 11/11/2026) das funções do banco real `c
 | `egestor-webhook` | Recebe do eGestor alterações de contatos e atualiza `clients` |
 | `sync-clientes` | Sincroniza todos os contatos do eGestor para `clients` |
 | `sync-produtos` | Sincroniza todos os produtos do eGestor para `products` |
+| `usuarios-api` | **Novo na 3.0.** Listar, criar, editar, desativar usuários e trocar senha. Confere o login e a permissão de quem chama; só Administrador mexe em Administrador. Mantém `user_config` em sincronia para a 2.0 |
 
 **Atenção nos testes:** `criar_venda` e `editar_venda` gravam no eGestor de verdade. Com o token real no banco de testes, um pedido feito na 3.0 vira venda real.
+
+## Usuários e perfis (3.0)
+- Aba **Config** → **Usuários** e **Perfis** (`src/pages/Usuarios.js`), para quem tem cadastro na tabela `usuarios`.
+- Usuário não é excluído: é **desativado** (o login fica bloqueado e o histórico continua).
+- Ninguém muda o próprio perfil nem se desativa.
+- Perfis e permissões são gravados direto nas tabelas, protegidas por RLS (permissão `usuarios.perfis`).
