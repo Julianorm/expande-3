@@ -54,8 +54,22 @@ const[allRoutesLoading,setAllRoutesLoading]=useState(false)
 const[adminGoalValue,setAdminGoalValue]=useState('')
 const[adminDtEntregaValue,setAdminDtEntregaValue]=useState('')
 const[userPerfil,setUserPerfil]=useState('')
-const isPrivileged=user?.id===ADMIN_ID||userPerfil==='financeiro'
-useEffect(()=>{if(userPerfil==='entregador'&&activeTab==='dashboard'){setActiveTab('clientes')}},[userPerfil])
+// eXpande 3.0 — permissões vêm do perfil do usuário (tabelas usuarios/perfis/perfil_permissoes).
+// Se o usuário ainda não tem cadastro na 3.0 (perms===null), vale a regra antiga da 2.0.
+const[perms,setPerms]=useState(null)
+const[perfil3,setPerfil3]=useState('')
+const[permsCarregadas,setPermsCarregadas]=useState(false)
+useEffect(()=>{if(!user?.id)return;let ativo=true;(async()=>{try{
+  const{data:u}=await supabase.from('usuarios').select('ativo,perfis(nome)').eq('id',user.id).maybeSingle()
+  if(u&&u.ativo){const{data:pl}=await supabase.rpc('minhas_permissoes');const lista=(pl||[]).map(x=>typeof x==='string'?x:(x?.minhas_permissoes??Object.values(x||{})[0]));if(ativo){setPerms(new Set(lista));setPerfil3(u.perfis?.nome||'')}}
+  else if(ativo){setPerms(null);setPerfil3('')}
+}catch(e){console.log('Permissões 3.0 indisponíveis, usando regra da 2.0',e)}finally{if(ativo)setPermsCarregadas(true)}})();return()=>{ativo=false}},[user?.id])
+const usa3=perms!==null
+const pode=k=>usa3&&perms.has(k)
+const isAdmin=usa3?pode('usuarios.editar'):user?.id===ADMIN_ID
+const isPrivileged=usa3?pode('vendas.ver_todas'):(isAdmin||userPerfil==='financeiro')
+const ehEntregador=usa3?perfil3==='Entregador':userPerfil==='entregador'
+useEffect(()=>{if(ehEntregador&&activeTab==='dashboard'){setActiveTab('clientes')}},[ehEntregador])
 const[ordemEdit,setOrdemEdit]=useState({})
 const[ordemSaving,setOrdemSaving]=useState(false)
 const[tabSaleClient,setTabSaleClient]=useState(null)
@@ -244,7 +258,7 @@ useEffect(()=>{
     localStorage.setItem('lastSalesSync',String(agora))
   })
 },[user?.id])
-useEffect(()=>{if(user?.id===ADMIN_ID&&activeTab==='relatorio'&&trocaVendedoresList.length===0){carregarTrocaVendedores()}},[user?.id,activeTab])
+useEffect(()=>{if(isAdmin&&activeTab==='relatorio'&&trocaVendedoresList.length===0){carregarTrocaVendedores()}},[isAdmin,activeTab])
 useEffect(()=>{loadGoal(selectedRoute)},[selectedRoute,loadGoal])
 useEffect(()=>{if(!isPrivileged&&routes.length===1&&!selectedRoute){setSelectedRoute(routes[0])}},[isPrivileged,routes,selectedRoute])
 useEffect(()=>{
@@ -659,7 +673,7 @@ if(user?.id&&gpsStatus==='checking'){
     <div style={{color:'#fff',fontSize:14}}>⏳ Verificando localização...</div>
   </div>
 }
-if(user?.id&&!isPrivileged&&userPerfil!=='entregador'&&(!selectedRoute||!dailyGoal||!dtEntrega)){
+if(user?.id&&permsCarregadas&&!isPrivileged&&!ehEntregador&&(!selectedRoute||!dailyGoal||!dtEntrega)){
   return<div style={{minHeight:'100vh',background:SURFACE,display:'flex',alignItems:'center',justifyContent:'center',padding:24,fontFamily:"'Inter',system-ui,sans-serif"}}>
     <div style={{background:CARD,borderRadius:16,padding:24,maxWidth:400,width:'100%'}}>
       <div style={{textAlign:'center',marginBottom:20}}>
@@ -710,13 +724,13 @@ return(<div style={{minHeight:'100vh',background:SURFACE,fontFamily:"'Inter',sys
 <button onClick={()=>supabase.auth.signOut()} style={{background:'none',border:`1px solid #ffffff55`,borderRadius:8,padding:'8px 16px',fontSize:13,color:'#e2e8f0',cursor:'pointer',fontWeight:600,marginLeft:'auto'}}>Sair</button></div>
 </div>
 <div style={{position:'fixed',bottom:0,left:0,right:0,background:CARD,borderTop:`1px solid ${BORDER}`,display:'flex',justifyContent:'space-around',padding:'6px 0',zIndex:100}}>
-{userPerfil!=='entregador'&&<Tab id="dashboard" label="Dashboard" icon="📊"/>}
+{!ehEntregador&&<Tab id="dashboard" label="Dashboard" icon="📊"/>}
 <Tab id="clientes" label="Clientes" icon="👥"/>
-{userPerfil==='entregador'&&<Tab id="entregas" label="Entregas" icon="🚚"/>}
-{userPerfil!=='entregador'&&<Tab id="vendas" label="Vendas" icon="💰"/>}
-{userPerfil!=='entregador'&&<Tab id="pedido" label="Pedido" icon="🛒" badge={orders.length}/>}
-{userPerfil!=='entregador'&&<Tab id="relatorio" label="Relatório" icon="📈"/>}
-{isPrivileged&&<Tab id="config" label="Config" icon="⚙️"/>}
+{ehEntregador&&<Tab id="entregas" label="Entregas" icon="🚚"/>}
+{!ehEntregador&&<Tab id="vendas" label="Vendas" icon="💰"/>}
+{!ehEntregador&&<Tab id="pedido" label="Pedido" icon="🛒" badge={orders.length}/>}
+{!ehEntregador&&<Tab id="relatorio" label="Relatório" icon="📈"/>}
+{(usa3?pode('usuarios.ver'):isPrivileged)&&<Tab id="config" label="Config" icon="⚙️"/>}
 </div>
 <div style={{padding:'12px 16px'}}>
 {clientePerfil&&<div style={{position:'fixed',inset:0,background:'#0008',zIndex:500,display:'flex',alignItems:'flex-end'}}>
@@ -870,20 +884,20 @@ return<div key={prod.codigo} style={{background:noLista?ACCENT_LIGHT:SURFACE,bor
 {routes.map(r=><option key={r} value={r}>{r}</option>)}
 </select>
 </div>}
-{selectedRoute&&userPerfil!=='entregador'&&<div style={{flex:'0 0 auto',background:CARD,border:`1px solid ${BORDER}`,borderRadius:10,padding:'8px 12px',display:'flex',flexDirection:'column',gap:8}}>
-{user?.id===ADMIN_ID&&<div>
+{selectedRoute&&!ehEntregador&&<div style={{flex:'0 0 auto',background:CARD,border:`1px solid ${BORDER}`,borderRadius:10,padding:'8px 12px',display:'flex',flexDirection:'column',gap:8}}>
+{isAdmin&&<div>
 <div style={{fontWeight:700,fontSize:11,marginBottom:3,color:MUTED}}>DATA</div>
 <input type="date" value={adminDate} onChange={e=>setAdminDate(e.target.value)} style={{border:`1px solid ${BORDER}`,borderRadius:6,padding:'4px 6px',fontSize:12}}/>
 </div>}
 <div>
 <div style={{fontWeight:700,fontSize:11,marginBottom:3,color:MUTED}}>META DO DIA</div>
-{user?.id===ADMIN_ID?<span style={{fontWeight:800,color:ACCENT,fontSize:14}}>{adminGoalValue?fmt(adminGoalValue):'—'}</span>
+{isAdmin?<span style={{fontWeight:800,color:ACCENT,fontSize:14}}>{adminGoalValue?fmt(adminGoalValue):'—'}</span>
 :dailyGoal?<div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800,color:ACCENT,fontSize:14}}>{fmt(dailyGoal)}</span><button onClick={()=>setDailyGoal('')} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12}}>✏️</button></div>
 :<div style={{display:'flex',gap:4}}><input type="number" placeholder="0,00" value={goalInput} onChange={e=>setGoalInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSetGoal()} style={{width:80,border:`1px solid ${BORDER}`,borderRadius:6,padding:'4px 6px',fontSize:12}}/><button onClick={handleSetGoal} style={{background:ACCENT,color:'#fff',border:'none',borderRadius:6,padding:'4px 8px',fontWeight:700,cursor:'pointer',fontSize:11}}>OK</button></div>}
 </div>
 <div>
 <div style={{fontWeight:700,fontSize:11,marginBottom:3,color:MUTED}}>DATA ENTREGA</div>
-{user?.id===ADMIN_ID?<span style={{fontWeight:800,color:ACCENT,fontSize:13}}>{adminDtEntregaValue?new Date(adminDtEntregaValue+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</span>
+{isAdmin?<span style={{fontWeight:800,color:ACCENT,fontSize:13}}>{adminDtEntregaValue?new Date(adminDtEntregaValue+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</span>
 :dtEntrega?<div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800,color:ACCENT,fontSize:13}}>{new Date(dtEntrega+'T12:00:00').toLocaleDateString('pt-BR')}</span><button onClick={()=>setDtEntrega('')} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12}}>✏️</button></div>
 :<div style={{display:'flex',gap:4}}><input type="date" value={dtEntregaInput||''} onChange={e=>setDtEntregaInput(e.target.value)} style={{border:`1px solid ${BORDER}`,borderRadius:6,padding:'4px 6px',fontSize:11}}/><button onClick={()=>handleSetDtEntrega(dtEntregaInput||new Date(Date.now()+86400000).toISOString().split('T')[0])} style={{background:ACCENT,color:'#fff',border:'none',borderRadius:6,padding:'4px 8px',fontWeight:700,cursor:'pointer',fontSize:11}}>OK</button></div>}
 </div>
@@ -1364,8 +1378,8 @@ return view==='compras'?<>
 </>
 })()}
 </div>}
-{activeTab==='config'&&isPrivileged&&<div>
-{user?.id===ADMIN_ID&&<>
+{activeTab==='config'&&(usa3?pode('usuarios.ver'):isPrivileged)&&<div>
+{isAdmin&&<>
 <div style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:12,padding:'14px 16px',marginBottom:12}}>
 <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>⚙️ Configurações</div>
 <button onClick={carregarConfig} disabled={configLoading} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:8,padding:'10px 0',fontWeight:700,fontSize:14,cursor:'pointer',marginBottom:12}}>
@@ -1400,14 +1414,14 @@ return view==='compras'?<>
 <div style={{fontSize:11,color:MUTED}}>Vendedor: {configVendedores.find(v=>v.codigo===u.config?.egestor_vendedor_code)?.nome||'Não vinculado'}</div>
 <div style={{marginTop:2}}><Badge color={u.config?.perfil==='admin'?DANGER:ACCENT}>{u.config?.perfil||'vendedor'}</Badge></div>
 </div>
-{u.id!==ADMIN_ID&&<button onClick={()=>deletarUsuario(u.id)} style={{background:'#FEF2F2',border:`1px solid ${DANGER}33`,borderRadius:7,padding:'6px 10px',fontSize:11,fontWeight:600,color:DANGER,cursor:'pointer'}}>🗑️</button>}
+{(u.id!==ADMIN_ID&&u.id!==user?.id)&&<button onClick={()=>deletarUsuario(u.id)} style={{background:'#FEF2F2',border:`1px solid ${DANGER}33`,borderRadius:7,padding:'6px 10px',fontSize:11,fontWeight:600,color:DANGER,cursor:'pointer'}}>🗑️</button>}
 </div>
-{u.id!==ADMIN_ID&&<div style={{marginBottom:8}}>
+{(u.id!==ADMIN_ID&&u.id!==user?.id)&&<div style={{marginBottom:8}}>
 <div style={{fontSize:11,fontWeight:600,color:MUTED,marginBottom:6}}>ROTAS DO VENDEDOR</div>
 <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
 {['AFONSO CLAUDIO','BREJETUBA','DOMINGOS MARTINS','LARANJA DA TERRA','SANTA MARIA','SANTA TERESA','VENDA NOVA'].map(rota=>{const temRota=(u.config?.rotas||[]).includes(rota);return<button key={rota} onClick={async()=>{const novasRotas=temRota?(u.config?.rotas||[]).filter(r=>r!==rota):[...(u.config?.rotas||[]),rota];const{error}=await supabase.from('user_config').update({rotas:novasRotas}).eq('user_id',u.id);if(error){showToast('Erro: '+error.message,'error');return}showToast('Rota atualizada!');await carregarConfig()}} style={{background:temRota?ACCENT:SURFACE,color:temRota?'#fff':MUTED,border:`1px solid ${temRota?ACCENT:BORDER}`,borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:600,cursor:'pointer'}}>{rota}</button>})}</div>
 </div>}
- {u.id!==ADMIN_ID&&<div style={{marginBottom:8}}>
+ {(u.id!==ADMIN_ID&&u.id!==user?.id)&&<div style={{marginBottom:8}}>
 <div style={{fontSize:11,fontWeight:600,color:MUTED,marginBottom:6}}>PERFIL</div>
 <select value={['vendedor','admin','financeiro','entregador'].includes(u.config?.perfil)?u.config?.perfil:(u.config?.perfil?'outro':'vendedor')} onChange={async(e)=>{
   if(e.target.value==='outro')return
@@ -1433,7 +1447,7 @@ return view==='compras'?<>
 }} style={{flex:1,border:`1px solid ${BORDER}`,borderRadius:8,padding:'8px 10px',fontSize:13,boxSizing:'border-box'}}/>
 </div>}
 </div>}                                                                                                                   
-{u.id!==ADMIN_ID&&<div style={{display:'flex',gap:8}}>
+{(u.id!==ADMIN_ID&&u.id!==user?.id)&&<div style={{display:'flex',gap:8}}>
 <input type="password" placeholder="Nova senha…" value={senhaUser[u.id]||''} onChange={e=>setSenhaUser(prev=>({...prev,[u.id]:e.target.value}))} style={{flex:1,border:`1px solid ${BORDER}`,borderRadius:8,padding:'8px 10px',fontSize:13,boxSizing:'border-box'}}/>
 <button onClick={()=>atualizarSenha(u.id)} style={{background:ACCENT,color:'#fff',border:'none',borderRadius:8,padding:'8px 12px',fontWeight:600,fontSize:12,cursor:'pointer'}}>Alterar</button>
 </div>}
