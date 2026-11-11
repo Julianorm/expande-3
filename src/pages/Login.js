@@ -48,7 +48,7 @@ export default function Login() {
   <text x="56" y="27" fontFamily="Arial, sans-serif" fontSize="21" fontWeight="900" fill="#2563EB">X</text>
   <text x="70" y="27" fontFamily="Arial, sans-serif" fontSize="21" fontWeight="300" fill="#1e293b">pande</text>
 </svg>
-         <div style={{ color: MUTED, fontSize: 12, marginTop: 4, marginBottom: 2 }}>v2.0.0</div>
+         <div style={{ color: MUTED, fontSize: 12, marginTop: 4, marginBottom: 2 }}>v3.0.0 · testes</div>
 <div style={{ color: MUTED, fontSize: 14, marginTop: 4 }}>
             {mode === 'login' ? 'Entre na sua conta' : 'Criar nova conta'}
           </div>

@@ -12,3 +12,16 @@ Nova versão do eXpande, desenvolvida em paralelo à 2.0 (repositório `Julianor
 |---|---|---|
 | 000 | `000_estrutura_2.0.sql` | Estrutura das tabelas da 2.0 — só para montar o banco de testes |
 | 001 | `001_usuarios_perfis.sql` | Usuários, perfis e permissões (caixas por módulo), vínculo com vendedor do eGestor, RLS |
+
+## Edge Functions
+Cópia fiel (conferida byte a byte em 11/11/2026) das funções do banco real `crm-rota`, em `supabase/functions/`. Publicar no banco de testes com **Verify JWT desligado**, como na 2.0. `teste-token` não foi copiada (era só teste).
+
+| Função | O que faz |
+|---|---|
+| `admin-api` | Criar, listar, excluir usuários e trocar senha (usa `user_config`) |
+| `egestor-api` | Produtos, buscar/criar/editar venda no eGestor, vendedores, perfil do cliente |
+| `egestor-webhook` | Recebe do eGestor alterações de contatos e atualiza `clients` |
+| `sync-clientes` | Sincroniza todos os contatos do eGestor para `clients` |
+| `sync-produtos` | Sincroniza todos os produtos do eGestor para `products` |
+
+**Atenção nos testes:** `criar_venda` e `editar_venda` gravam no eGestor de verdade. Com o token real no banco de testes, um pedido feito na 3.0 vira venda real.
