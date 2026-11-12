@@ -901,7 +901,7 @@ return<div key={prod.codigo} style={{background:noLista?ACCENT_LIGHT:SURFACE,bor
 </div>}
 <div>
 <div style={{fontWeight:700,fontSize:11,marginBottom:3,color:MUTED}}>META DO DIA</div>
-{isAdmin?<span style={{fontWeight:800,color:ACCENT,fontSize:14}}>{adminGoalValue?fmt(adminGoalValue):'—'}</span>
+{isAdmin?<span style={{fontWeight:800,color:ACCENT,fontSize:14}}>{adminGoalValue?fmt(adminGoalValue):(usa3&&pode('vendas.metas')?<span style={{fontSize:11,fontWeight:600,color:MUTED}}>defina abaixo ↓</span>:'—')}</span>
 :dailyGoal?<div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800,color:ACCENT,fontSize:14}}>{fmt(dailyGoal)}</span>{podeMetas&&<button onClick={()=>setDailyGoal('')} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12}}>✏️</button>}</div>
 :<div style={{display:'flex',gap:4}}><input type="number" placeholder="0,00" value={goalInput} onChange={e=>setGoalInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSetGoal()} style={{width:80,border:`1px solid ${BORDER}`,borderRadius:6,padding:'4px 6px',fontSize:12}}/><button onClick={handleSetGoal} style={{background:ACCENT,color:'#fff',border:'none',borderRadius:6,padding:'4px 8px',fontWeight:700,cursor:'pointer',fontSize:11}}>OK</button></div>}
 </div>
@@ -914,7 +914,7 @@ return<div key={prod.codigo} style={{background:noLista?ACCENT_LIGHT:SURFACE,bor
 </div>}
 </div>}
 {activeTab==='dashboard'&&<div>
-{isPrivileged&&usa3&&pode('vendas.metas')&&<MetasDoDia supabase={supabase} showToast={showToast}/>}
+{isPrivileged&&usa3&&pode('vendas.metas')&&<MetasDoDia supabase={supabase} showToast={showToast} rota={selectedRoute}/>}
 {isPrivileged&&<>
 {allRoutesLoading?<div style={{textAlign:'center',padding:'20px 0',color:MUTED,fontSize:13}}>⏳ Carregando visão geral do dia...</div>:<>
 {allRoutesSummary.length>0&&<div style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:12,overflow:'hidden',marginBottom:12}}>

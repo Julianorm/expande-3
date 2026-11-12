@@ -13,7 +13,7 @@ const proximoDiaUtil = (d) => {
 }
 const chave = (uid, rota) => `${uid}|${rota}`
 
-export default function MetasDoDia({ supabase, showToast }) {
+export default function MetasDoDia({ supabase, showToast, rota }) {
   const [data, setData] = useState(hoje())
   const [vendedores, setVendedores] = useState([])
   const [valores, setValores] = useState({}) // chave -> {meta, entrega, salvo}
@@ -53,22 +53,25 @@ export default function MetasDoDia({ supabase, showToast }) {
     showToast(`Meta de ${u.name} (${rota}) salva!`)
   }
 
-  const total = Object.keys(valores).length
-  const definidas = Object.values(valores).filter(x => x.salvo).length
+  // Com uma rota escolhida no topo, mostra só os vendedores dessa rota.
+  const lista = rota ? vendedores.filter(u => u.rotas.includes(rota)).map(u => ({ ...u, rotas: [rota] })) : vendedores
+  const chaves = lista.flatMap(u => u.rotas.map(r => chave(u.user_id, r)))
+  const total = chaves.length
+  const definidas = chaves.filter(k => valores[k]?.salvo).length
 
   return <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, marginBottom: 12, overflow: 'hidden' }}>
     <div onClick={() => setAberto(!aberto)} style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
       <div>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>🎯 Metas e entregas do dia</div>
-        <div style={{ fontSize: 12, color: definidas < total ? WARNING : SUCCESS, fontWeight: 600 }}>{definidas} de {total} definidas</div>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>🎯 Definir metas e datas de entrega{rota ? ` · ${rota}` : ''}</div>
+        <div style={{ fontSize: 12, color: definidas < total ? WARNING : SUCCESS, fontWeight: 600 }}>{definidas} de {total} definidas · toque para {aberto ? 'fechar' : 'abrir'}</div>
       </div>
       <span style={{ color: MUTED, fontSize: 18 }}>{aberto ? '▾' : '▸'}</span>
     </div>
     {aberto && <div style={{ borderTop: `1px solid ${BORDER}`, padding: '12px 16px' }}>
       <label style={{ fontSize: 11, fontWeight: 600, color: MUTED, display: 'block', marginBottom: 4 }}>DIA DA VENDA</label>
       <input type="date" value={data} onChange={e => setData(e.target.value)} style={{ border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, marginBottom: 12 }} />
-      {vendedores.length === 0 && <div style={{ fontSize: 13, color: MUTED }}>Nenhum vendedor com rotas cadastradas.</div>}
-      {vendedores.map(u => <div key={u.user_id} style={{ marginBottom: 12 }}>
+      {lista.length === 0 && <div style={{ fontSize: 13, color: MUTED }}>{rota ? `Nenhum vendedor com a rota ${rota} no cadastro.` : 'Nenhum vendedor com rotas cadastradas.'} Vincule rotas em Config → Usuários.</div>}
+      {lista.map(u => <div key={u.user_id} style={{ marginBottom: 12 }}>
         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{u.name}</div>
         {u.rotas.map(rota => {
           const k = chave(u.user_id, rota), v = valores[k] || {}
