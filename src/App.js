@@ -103,12 +103,32 @@ const[pedidoDtEntrega,setPedidoDtEntrega]=useState('')
 const[editandoMeta,setEditandoMeta]=useState(false)
 const[editandoData,setEditandoData]=useState(false)
 const[pedidoSituacao,setPedidoSituacao]=useState('Pedido S/ NFe')
+// Última escolha do cliente (tabela cliente_preferencias): a forma de pagamento lembrada
+// vale mais que o padrão do tipo de pedido na hora de preencher.
+const formaPrefRef=useState(()=>({current:null}))[0]
+const[prefAplicada,setPrefAplicada]=useState(false)
 useEffect(()=>{
+  if(formaPrefRef.current!==null){setPedidoFormaPgto(formaPrefRef.current);formaPrefRef.current=null;return}
   if(pedidoSituacao==='Pedido S/ NFe')setPedidoFormaPgto('1')
   else if(pedidoSituacao==='Pedido C/ NFe')setPedidoFormaPgto('16')
   else setPedidoFormaPgto('')
 },[pedidoSituacao])
 const[pedidoLoading,setPedidoLoading]=useState(false)
+useEffect(()=>{
+  setPrefAplicada(false)
+  const cod=pedidoCliente?.erp_code
+  if(!cod)return
+  let ativo=true
+  supabase.from('cliente_preferencias').select('situacao,forma_pgto,prazo_dias').eq('client_erp_code',String(cod)).maybeSingle().then(({data})=>{
+    if(!ativo||!data)return
+    const forma=data.forma_pgto!=null?String(data.forma_pgto):''
+    if(data.situacao&&data.situacao!==pedidoSituacao){formaPrefRef.current=forma;setPedidoSituacao(data.situacao)}
+    setPedidoFormaPgto(forma)
+    setPedidoVencimento(new Date(Date.now()+(data.prazo_dias||0)*86400000).toISOString().split('T')[0])
+    setPrefAplicada(true)
+  })
+  return()=>{ativo=false}
+},[pedidoCliente?.erp_code])
 const[clientePerfil,setClientePerfil]=useState(null)
 const[perfilData,setPerfilData]=useState(null)
 const[perfilLoading,setPerfilLoading]=useState(false)
@@ -399,7 +419,7 @@ const salvarNaoComprou=async()=>{
   setObsNaoComprou('')
   setClientePerfil(null)
 }
-const salvarPedido=async()=>{if(!pedidoCliente||pedidoProdutos.length===0){showToast('Preencha cliente e produtos.','error');return}if(['Pedido S/ NFe','Pedido C/ NFe'].includes(pedidoSituacao)&&!pedidoFormaPgto){showToast('Selecione a forma de pagamento.','error');return}setPedidoLoading(true);try{const total=pedidoProdutos.reduce((acc,p)=>{const sub=p.precoVenda*p.quant;const desc=sub*(p.vDesc||0)/100;return acc+sub-desc},0);const uid=user.id;const gps=await getGpsLocation();const{error}=await supabase.from('orders').insert({user_id:uid,client_id:pedidoCliente.id||null,client_name:pedidoCliente.name,client_erp_code:pedidoCliente.erp_code,route:selectedRoute||pedidoCliente.route||'',situacao:pedidoSituacao,forma_pgto:pedidoFormaPgto?parseInt(pedidoFormaPgto):null,vencimento:pedidoVencimento,dt_entrega:pedidoDtEntrega||dtEntrega||null,produtos:pedidoProdutos,total,date:today(),gps_lat:gps?.lat||null,gps_lng:gps?.lng||null});if(error){showToast('Erro ao salvar pedido','error')}else{showToast('Pedido salvo!');setPedidoCliente(null);setPedidoProdutos([]);setPedidoFormaPgto('1');setPedidoSituacao('Pedido S/ NFe');setPedidoVencimento(today());setPedidoDtEntrega('');await loadOrders()}}catch(err){showToast('Erro ao salvar pedido','error')}setPedidoLoading(false)}
+const salvarPedido=async()=>{if(!pedidoCliente||pedidoProdutos.length===0){showToast('Preencha cliente e produtos.','error');return}if(['Pedido S/ NFe','Pedido C/ NFe'].includes(pedidoSituacao)&&!pedidoFormaPgto){showToast('Selecione a forma de pagamento.','error');return}setPedidoLoading(true);try{const total=pedidoProdutos.reduce((acc,p)=>{const sub=p.precoVenda*p.quant;const desc=sub*(p.vDesc||0)/100;return acc+sub-desc},0);const uid=user.id;const gps=await getGpsLocation();const{error}=await supabase.from('orders').insert({user_id:uid,client_id:pedidoCliente.id||null,client_name:pedidoCliente.name,client_erp_code:pedidoCliente.erp_code,route:selectedRoute||pedidoCliente.route||'',situacao:pedidoSituacao,forma_pgto:pedidoFormaPgto?parseInt(pedidoFormaPgto):null,vencimento:pedidoVencimento,dt_entrega:pedidoDtEntrega||dtEntrega||null,produtos:pedidoProdutos,total,date:today(),gps_lat:gps?.lat||null,gps_lng:gps?.lng||null});if(error){showToast('Erro ao salvar pedido','error')}else{if(pedidoCliente.erp_code){const prazo=Math.max(0,Math.round((new Date(pedidoVencimento+'T12:00:00')-new Date(today()+'T12:00:00'))/86400000));await supabase.from('cliente_preferencias').upsert({client_erp_code:String(pedidoCliente.erp_code),situacao:pedidoSituacao,forma_pgto:pedidoFormaPgto?parseInt(pedidoFormaPgto):null,prazo_dias:prazo,atualizado_em:new Date().toISOString()},{onConflict:'client_erp_code'})}showToast('Pedido salvo!');setPedidoCliente(null);setPedidoProdutos([]);setPedidoFormaPgto('1');setPedidoSituacao('Pedido S/ NFe');setPedidoVencimento(today());setPedidoDtEntrega('');await loadOrders()}}catch(err){showToast('Erro ao salvar pedido','error')}setPedidoLoading(false)}
 const excluirPedido=async(id)=>{const{error}=await supabase.from('orders').delete().eq('id',id);if(error){showToast('Erro ao excluir pedido','error');return}setOrders(prev=>prev.filter(o=>o.id!==id));showToast('Pedido excluído')}
 const exportarPedidos=async()=>{if(exportingRef.current){return}exportingRef.current=true;const pendentes=orders.filter(o=>o.status==='pendente');if(pendentes.length===0){showToast('Nenhum pedido pendente','error');exportingRef.current=false;return}setExportLoading(true);let ok=0;let erros=0;for(const order of pendentes){try{const res=await fetch(`${EGESTOR_API}?action=criar_venda`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codContato:order.client_erp_code,nomeContato:order.client_name,route:order.route,user_id:user.id,produtos:order.produtos.map(p=>({codigo:p.codigo,quant:p.quant,preco:p.precoVenda,vDesc:p.vDesc||0})),codFormaPgto:order.forma_pgto,vencimento:order.vencimento||today(),situacaoOS:order.situacao,dtEntrega:order.dt_entrega||dtEntrega||new Date(Date.now()+86400000).toISOString().split('T')[0],gpsLat:order.gps_lat||null,gpsLng:order.gps_lng||null})});const result=await res.json();if(result.codigo){const{data:saleData}=await supabase.from('sales').select('id').eq('erp_code',result.codigo).single();if(saleData?.id){const items=order.produtos.map(p=>({sale_id:saleData.id,user_id:user.id,client_erp_code:order.client_erp_code,erp_code:p.codigo,descricao:p.descricao,codigo_proprio:p.codigoProprio||'',quant:p.quant,preco:p.precoVenda,vdesc:p.vDesc||0,total:p.precoVenda*p.quant*(1-(p.vDesc||0)/100),date:today()}));await supabase.from('sales_items').insert(items)}await supabase.from('orders').delete().eq('id',order.id);ok++}else{erros++}}catch(err){erros++}}await loadOrders();await loadSales();setExportLoading(false);exportingRef.current=false;if(erros===0){showToast(`${ok} pedido(s) exportado(s)!`)}else{showToast(`${ok} exportado(s), ${erros} com erro`,'error')}}
 const abrirEdicaoOrder=async(order)=>{setEditandoOrder(order);setEditOrderProdutos(order.produtos||[]);setEditOrderFormaPgto(String(order.forma_pgto||'1'));setEditOrderSituacao(order.situacao||'Pedido S/ NFe')}
@@ -1224,6 +1244,7 @@ return<div key={c.id} onClick={()=>abrirPerfil(c)} style={{padding:'10px 14px',b
 </div>})}
 </div>}
 </div>}
+{prefAplicada&&<div style={{fontSize:11,color:SUCCESS,fontWeight:600,marginBottom:6}}>✓ Tipo, pagamento e prazo preenchidos com a última escolha deste cliente</div>}
 <select value={pedidoSituacao} onChange={e=>setPedidoSituacao(e.target.value)} style={{width:'100%',border:`1px solid ${BORDER}`,borderRadius:8,padding:'10px 12px',fontSize:14,background:SURFACE,marginBottom:8}}>
 <option>Pedido S/ NFe</option><option>Pedido C/ NFe</option><option>Bonificação</option><option>Troca</option>
 </select>
