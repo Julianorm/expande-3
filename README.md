@@ -13,6 +13,7 @@ Nova versão do eXpande, desenvolvida em paralelo à 2.0 (repositório `Julianor
 | 000 | `000_estrutura_2.0.sql` | Estrutura das tabelas da 2.0 — só para montar o banco de testes |
 | 001 | `001_usuarios_perfis.sql` | Usuários, perfis e permissões (caixas por módulo), vínculo com vendedor do eGestor, RLS |
 | 002 | `002_permissao_data_entrega.sql` | Separa "meta do dia" de "data de entrega"; Vendedor já vem com a de data |
+| 003 | `003_pedido_data_entrega.sql` | Coluna opcional `orders.dt_entrega` (entrega futura por pedido). **Aplicar antes de publicar o app.** |
 
 ## Edge Functions
 Cópia fiel (conferida byte a byte em 11/11/2026) das funções do banco real `crm-rota`, em `supabase/functions/`. Publicar no banco de testes com **Verify JWT desligado**, como na 2.0. `teste-token` não foi copiada (era só teste).
