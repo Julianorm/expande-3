@@ -73,6 +73,8 @@ const isPrivileged=usa3?pode('vendas.ver_todas'):(isAdmin||userPerfil==='finance
 const ehEntregador=usa3?perfil3==='Entregador':userPerfil==='entregador'
 // Sem a permissão vendas.metas, a meta e a data de entrega do dia vêm do escritório (daily_goals).
 const podeMetas=usa3?pode('vendas.metas'):true
+// Data de entrega é separada da meta: o vendedor pode precisar mudar a data no meio dos pedidos.
+const podeData=usa3?pode('vendas.data_entrega'):true
 useEffect(()=>{if(ehEntregador&&activeTab==='dashboard'){setActiveTab('clientes')}},[ehEntregador])
 const[ordemEdit,setOrdemEdit]=useState({})
 const[ordemSaving,setOrdemSaving]=useState(false)
@@ -691,6 +693,55 @@ if(user?.id&&permsCarregadas&&!isPrivileged&&!ehEntregador&&(!selectedRoute||!da
           {routes.map(r=><option key={r} value={r}>{r}</option>)}
         </select>
       </div>
+      {selectedRoute&&((!dailyGoal&&!podeMetas)||(!dtEntrega&&!podeData))&&<div style={{background:SURFACE,border:`1px solid ${BORDER}`,borderRadius:10,padding:16,textAlign:'center'}}>
+        <div style={{fontSize:28,marginBottom:6}}>⏳</div>
+        <div style={{fontWeight:700,fontSize:14,color:TEXT,marginBottom:4}}>Aguardando o escritório</div>
+        <div style={{fontSize:13,color:MUTED,marginBottom:12}}>{!dailyGoal&&!podeMetas&&(!dtEntrega&&!podeData)?'A meta e a data de entrega':!dailyGoal&&!podeMetas?'A meta':'A data de entrega'} da rota {selectedRoute} ainda não {(!dailyGoal&&!podeMetas)&&(!dtEntrega&&!podeData)?'foram definidas':'foi definida'} para hoje.</div>
+        <button onClick={()=>loadGoal(selectedRoute)} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:8,padding:'12px 0',fontWeight:700,fontSize:14,cursor:'pointer'}}>🔄 Verificar de novo</button>
+      </div>}
+      {selectedRoute&&!((!dailyGoal&&!podeMetas)||(!dtEntrega&&!podeData))&&<>
+        {dailyGoal?<div style={{marginBottom:12,fontSize:13,color:MUTED}}>Meta do dia: <b style={{color:ACCENT}}>{fmt(dailyGoal)}</b></div>
+        :<div style={{marginBottom:12}}>
+          <label style={{fontSize:11,fontWeight:600,color:MUTED,display:'block',marginBottom:4}}>META DO DIA (R$)</label>
+          <input type="number" placeholder="0,00" value={goalInput} onChange={e=>setGoalInput(e.target.value)} style={{width:'100%',border:`1px solid ${BORDER}`,borderRadius:8,padding:'10px 12px',fontSize:16,boxSizing:'border-box',textAlign:'center'}}/>
+        </div>}
+        {dtEntrega?<div style={{marginBottom:20,fontSize:13,color:MUTED}}>Data de entrega: <b style={{color:ACCENT}}>{new Date(dtEntrega+'T12:00:00').toLocaleDateString('pt-BR')}</b></div>
+        :<div style={{marginBottom:20}}>
+          <label style={{fontSize:11,fontWeight:600,color:MUTED,display:'block',marginBottom:4}}>DATA DE ENTREGA</label>
+          <input type="date" value={dtEntregaInput||''} onChange={e=>setDtEntregaInput(e.target.value)} style={{width:'100%',border:`1px solid ${BORDER}`,borderRadius:8,padding:'10px 12px',fontSize:16,boxSizing:'border-box',textAlign:'center'}}/>
+        </div>}
+        <button onClick={async()=>{
+          if(!dailyGoal&&(!goalInput||isNaN(parseFloat(goalInput)))){showToast('Informe a meta do dia.','error');return}
+          const dt=dtEntrega||dtEntregaInput||new Date(Date.now()+86400000).toISOString().split('T')[0]
+          if(!dailyGoal)await handleSetGoal(dt)
+          if(!dtEntrega)await handleSetDtEntrega(dt)
+        }} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:8,padding:'14px 0',fontWeight:800,fontSize:15,cursor:'pointer'}}>
+          🚀 Começar o Dia
+        </button>
+      </>}
+      <button onClick={()=>supabase.auth.signOut()} style={{width:'100%',background:'none',border:'none',color:MUTED,fontWeight:600,fontSize:13,cursor:'pointer'}}>Sair</button>
+    </div>
+  </div>
+}
+if(user?.id&&gpsStatus==='checking'){
+  return<div style={{minHeight:'100vh',background:'#1e293b',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Inter',system-ui,sans-serif"}}>
+    <div style={{color:'#fff',fontSize:14}}>⏳ Verificando localização...</div>
+  </div>
+}
+if(user?.id&&permsCarregadas&&!isPrivileged&&!ehEntregador&&(!selectedRoute||!dailyGoal||!dtEntrega)){
+  return<div style={{minHeight:'100vh',background:SURFACE,display:'flex',alignItems:'center',justifyContent:'center',padding:24,fontFamily:"'Inter',system-ui,sans-serif"}}>
+    <div style={{background:CARD,borderRadius:16,padding:24,maxWidth:400,width:'100%'}}>
+      <div style={{textAlign:'center',marginBottom:20}}>
+        <div style={{fontSize:36,marginBottom:8}}>🌅</div>
+        <div style={{fontWeight:800,fontSize:18,color:TEXT}}>Configurar o dia</div>
+      </div>
+      <div style={{marginBottom:12}}>
+        <label style={{fontSize:11,fontWeight:600,color:MUTED,display:'block',marginBottom:4}}>ROTA</label>
+        <select value={selectedRoute} onChange={e=>{setSelectedRoute(e.target.value);setDailyGoal('');setDtEntrega('')}} style={{width:'100%',border:`1px solid ${BORDER}`,borderRadius:8,padding:'10px 12px',fontSize:16,background:SURFACE,boxSizing:'border-box'}}>
+          <option value="">Selecionar…</option>
+          {routes.map(r=><option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
       {selectedRoute&&!podeMetas&&<div style={{background:SURFACE,border:`1px solid ${BORDER}`,borderRadius:10,padding:16,textAlign:'center'}}>
         <div style={{fontSize:28,marginBottom:6}}>⏳</div>
         <div style={{fontWeight:700,fontSize:14,color:TEXT,marginBottom:4}}>Aguardando o escritório</div>
@@ -908,7 +959,7 @@ return<div key={prod.codigo} style={{background:noLista?ACCENT_LIGHT:SURFACE,bor
 <div>
 <div style={{fontWeight:700,fontSize:11,marginBottom:3,color:MUTED}}>DATA ENTREGA</div>
 {isAdmin?<span style={{fontWeight:800,color:ACCENT,fontSize:13}}>{adminDtEntregaValue?new Date(adminDtEntregaValue+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</span>
-:dtEntrega?<div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800,color:ACCENT,fontSize:13}}>{new Date(dtEntrega+'T12:00:00').toLocaleDateString('pt-BR')}</span>{podeMetas&&<button onClick={()=>setDtEntrega('')} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12}}>✏️</button>}</div>
+:dtEntrega?<div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800,color:ACCENT,fontSize:13}}>{new Date(dtEntrega+'T12:00:00').toLocaleDateString('pt-BR')}</span>{podeData&&<button onClick={()=>setDtEntrega('')} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12}}>✏️</button>}</div>
 :<div style={{display:'flex',gap:4}}><input type="date" value={dtEntregaInput||''} onChange={e=>setDtEntregaInput(e.target.value)} style={{border:`1px solid ${BORDER}`,borderRadius:6,padding:'4px 6px',fontSize:11}}/><button onClick={()=>handleSetDtEntrega(dtEntregaInput||new Date(Date.now()+86400000).toISOString().split('T')[0])} style={{background:ACCENT,color:'#fff',border:'none',borderRadius:6,padding:'4px 8px',fontWeight:700,cursor:'pointer',fontSize:11}}>OK</button></div>}
 </div>
 </div>}
