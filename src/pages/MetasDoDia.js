@@ -26,7 +26,7 @@ export default function MetasDoDia({ supabase, showToast, rota }) {
       supabase.from('daily_goals').select('user_id, route, goal_value, dt_entrega').eq('date', data)
     ])
     const vend = (cfg || [])
-      .filter(u => u.egestor_vendedor_code && u.perfil !== 'entregador' && u.perfil !== 'admin' && (u.rotas || []).length > 0)
+      .filter(u => u.perfil !== 'entregador' && u.perfil !== 'admin' && (u.rotas || []).length > 0)
       .sort((a, b) => String(a.name).localeCompare(String(b.name)))
     setVendedores(vend)
     const v = {}
@@ -72,7 +72,7 @@ export default function MetasDoDia({ supabase, showToast, rota }) {
       <input type="date" value={data} onChange={e => setData(e.target.value)} style={{ border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, marginBottom: 12 }} />
       {lista.length === 0 && <div style={{ fontSize: 13, color: MUTED }}>{rota ? `Nenhum vendedor com a rota ${rota} no cadastro.` : 'Nenhum vendedor com rotas cadastradas.'} Vincule rotas em Config → Usuários.</div>}
       {lista.map(u => <div key={u.user_id} style={{ marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{u.name}</div>
+        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{u.name}{!u.egestor_vendedor_code && <span style={{ color: WARNING, fontWeight: 600, fontSize: 11 }}> · sem vendedor do eGestor vinculado</span>}</div>
         {u.rotas.map(rota => {
           const k = chave(u.user_id, rota), v = valores[k] || {}
           return <div key={rota} style={{ background: SURFACE, border: `1px solid ${v.salvo ? SUCCESS + '55' : BORDER}`, borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
