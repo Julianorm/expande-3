@@ -4,6 +4,7 @@ import{supabase}from './lib/supabase'
 import logoBase64 from './lib/logoBase64'
 import{useAuth}from './lib/useAuth'
 import GestaoUsuarios from './pages/Usuarios'
+import MetasDoDia from './pages/MetasDoDia'
 const ACCENT='#2563EB',ACCENT_LIGHT='#EFF6FF',SUCCESS='#16A34A',WARNING='#D97706',DANGER='#DC2626',SURFACE='#F8FAFC',CARD='#FFFFFF',BORDER='#E2E8F0',TEXT='#0F172A',MUTED='#64748B'
 const fmt=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
 const today=()=>new Date().toISOString().split('T')[0]
@@ -70,6 +71,8 @@ const pode=k=>usa3&&perms.has(k)
 const isAdmin=usa3?pode('usuarios.editar'):user?.id===ADMIN_ID
 const isPrivileged=usa3?pode('vendas.ver_todas'):(isAdmin||userPerfil==='financeiro')
 const ehEntregador=usa3?perfil3==='Entregador':userPerfil==='entregador'
+// Sem a permissão vendas.metas, a meta e a data de entrega do dia vêm do escritório (daily_goals).
+const podeMetas=usa3?pode('vendas.metas'):true
 useEffect(()=>{if(ehEntregador&&activeTab==='dashboard'){setActiveTab('clientes')}},[ehEntregador])
 const[ordemEdit,setOrdemEdit]=useState({})
 const[ordemSaving,setOrdemSaving]=useState(false)
@@ -688,7 +691,13 @@ if(user?.id&&permsCarregadas&&!isPrivileged&&!ehEntregador&&(!selectedRoute||!da
           {routes.map(r=><option key={r} value={r}>{r}</option>)}
         </select>
       </div>
-      {selectedRoute&&<>
+      {selectedRoute&&!podeMetas&&<div style={{background:SURFACE,border:`1px solid ${BORDER}`,borderRadius:10,padding:16,textAlign:'center'}}>
+        <div style={{fontSize:28,marginBottom:6}}>⏳</div>
+        <div style={{fontWeight:700,fontSize:14,color:TEXT,marginBottom:4}}>Aguardando o escritório</div>
+        <div style={{fontSize:13,color:MUTED,marginBottom:12}}>A meta e a data de entrega da rota {selectedRoute} ainda não foram definidas para hoje.</div>
+        <button onClick={()=>loadGoal(selectedRoute)} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:8,padding:'12px 0',fontWeight:700,fontSize:14,cursor:'pointer'}}>🔄 Verificar de novo</button>
+      </div>}
+      {selectedRoute&&podeMetas&&<>
         <div style={{marginBottom:12}}>
           <label style={{fontSize:11,fontWeight:600,color:MUTED,display:'block',marginBottom:4}}>META DO DIA (R$)</label>
           <input type="number" placeholder="0,00" value={goalInput} onChange={e=>setGoalInput(e.target.value)} style={{width:'100%',border:`1px solid ${BORDER}`,borderRadius:8,padding:'10px 12px',fontSize:16,boxSizing:'border-box',textAlign:'center'}}/>
@@ -893,18 +902,19 @@ return<div key={prod.codigo} style={{background:noLista?ACCENT_LIGHT:SURFACE,bor
 <div>
 <div style={{fontWeight:700,fontSize:11,marginBottom:3,color:MUTED}}>META DO DIA</div>
 {isAdmin?<span style={{fontWeight:800,color:ACCENT,fontSize:14}}>{adminGoalValue?fmt(adminGoalValue):'—'}</span>
-:dailyGoal?<div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800,color:ACCENT,fontSize:14}}>{fmt(dailyGoal)}</span><button onClick={()=>setDailyGoal('')} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12}}>✏️</button></div>
+:dailyGoal?<div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800,color:ACCENT,fontSize:14}}>{fmt(dailyGoal)}</span>{podeMetas&&<button onClick={()=>setDailyGoal('')} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12}}>✏️</button>}</div>
 :<div style={{display:'flex',gap:4}}><input type="number" placeholder="0,00" value={goalInput} onChange={e=>setGoalInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSetGoal()} style={{width:80,border:`1px solid ${BORDER}`,borderRadius:6,padding:'4px 6px',fontSize:12}}/><button onClick={handleSetGoal} style={{background:ACCENT,color:'#fff',border:'none',borderRadius:6,padding:'4px 8px',fontWeight:700,cursor:'pointer',fontSize:11}}>OK</button></div>}
 </div>
 <div>
 <div style={{fontWeight:700,fontSize:11,marginBottom:3,color:MUTED}}>DATA ENTREGA</div>
 {isAdmin?<span style={{fontWeight:800,color:ACCENT,fontSize:13}}>{adminDtEntregaValue?new Date(adminDtEntregaValue+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</span>
-:dtEntrega?<div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800,color:ACCENT,fontSize:13}}>{new Date(dtEntrega+'T12:00:00').toLocaleDateString('pt-BR')}</span><button onClick={()=>setDtEntrega('')} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12}}>✏️</button></div>
+:dtEntrega?<div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800,color:ACCENT,fontSize:13}}>{new Date(dtEntrega+'T12:00:00').toLocaleDateString('pt-BR')}</span>{podeMetas&&<button onClick={()=>setDtEntrega('')} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12}}>✏️</button>}</div>
 :<div style={{display:'flex',gap:4}}><input type="date" value={dtEntregaInput||''} onChange={e=>setDtEntregaInput(e.target.value)} style={{border:`1px solid ${BORDER}`,borderRadius:6,padding:'4px 6px',fontSize:11}}/><button onClick={()=>handleSetDtEntrega(dtEntregaInput||new Date(Date.now()+86400000).toISOString().split('T')[0])} style={{background:ACCENT,color:'#fff',border:'none',borderRadius:6,padding:'4px 8px',fontWeight:700,cursor:'pointer',fontSize:11}}>OK</button></div>}
 </div>
 </div>}
 </div>}
 {activeTab==='dashboard'&&<div>
+{isPrivileged&&usa3&&pode('vendas.metas')&&<MetasDoDia supabase={supabase} showToast={showToast}/>}
 {isPrivileged&&<>
 {allRoutesLoading?<div style={{textAlign:'center',padding:'20px 0',color:MUTED,fontSize:13}}>⏳ Carregando visão geral do dia...</div>:<>
 {allRoutesSummary.length>0&&<div style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:12,overflow:'hidden',marginBottom:12}}>
