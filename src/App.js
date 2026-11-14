@@ -5,6 +5,7 @@ import logoBase64 from './lib/logoBase64'
 import{useAuth}from './lib/useAuth'
 import GestaoUsuarios from './pages/Usuarios'
 import MetasDoDia from './pages/MetasDoDia'
+import Producao from './pages/Producao'
 const ACCENT='#2563EB',ACCENT_LIGHT='#EFF6FF',SUCCESS='#16A34A',WARNING='#D97706',DANGER='#DC2626',SURFACE='#F8FAFC',CARD='#FFFFFF',BORDER='#E2E8F0',TEXT='#0F172A',MUTED='#64748B'
 const fmt=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
 const today=()=>new Date().toISOString().split('T')[0]
@@ -75,6 +76,10 @@ const ehEntregador=usa3?perfil3==='Entregador':userPerfil==='entregador'
 const podeMetas=usa3?pode('vendas.metas'):true
 // Data de entrega é separada da meta: o vendedor pode precisar mudar a data no meio dos pedidos.
 const podeData=usa3?pode('vendas.data_entrega'):true
+// Quem não trabalha com vendas (ex.: padeiro) não passa pela tela de rota/meta e vai direto ao seu módulo.
+const fazVendas=!usa3||isPrivileged||pode('vendas.lancar')||pode('vendas.ver_proprias')
+const veProducao=usa3&&pode('producao.ver')
+useEffect(()=>{if(permsCarregadas&&!fazVendas&&veProducao)setActiveTab('producao')},[permsCarregadas,fazVendas,veProducao])
 useEffect(()=>{if(ehEntregador&&activeTab==='dashboard'){setActiveTab('clientes')}},[ehEntregador])
 const[ordemEdit,setOrdemEdit]=useState({})
 const[ordemSaving,setOrdemSaving]=useState(false)
@@ -421,7 +426,7 @@ const salvarNaoComprou=async()=>{
 }
 const salvarPedido=async()=>{if(!pedidoCliente||pedidoProdutos.length===0){showToast('Preencha cliente e produtos.','error');return}if(['Pedido S/ NFe','Pedido C/ NFe'].includes(pedidoSituacao)&&!pedidoFormaPgto){showToast('Selecione a forma de pagamento.','error');return}setPedidoLoading(true);try{const total=pedidoProdutos.reduce((acc,p)=>{const sub=p.precoVenda*p.quant;const desc=sub*(p.vDesc||0)/100;return acc+sub-desc},0);const uid=user.id;const gps=await getGpsLocation();const{error}=await supabase.from('orders').insert({user_id:uid,client_id:pedidoCliente.id||null,client_name:pedidoCliente.name,client_erp_code:pedidoCliente.erp_code,route:selectedRoute||pedidoCliente.route||'',situacao:pedidoSituacao,forma_pgto:pedidoFormaPgto?parseInt(pedidoFormaPgto):null,vencimento:pedidoVencimento,dt_entrega:pedidoDtEntrega||dtEntrega||null,produtos:pedidoProdutos,total,date:today(),gps_lat:gps?.lat||null,gps_lng:gps?.lng||null});if(error){showToast('Erro ao salvar pedido','error')}else{if(pedidoCliente.erp_code&&['Pedido S/ NFe','Pedido C/ NFe'].includes(pedidoSituacao)){/* Troca e Bonificação não substituem a escolha lembrada do cliente */const prazo=Math.max(0,Math.round((new Date(pedidoVencimento+'T12:00:00')-new Date(today()+'T12:00:00'))/86400000));await supabase.from('cliente_preferencias').upsert({client_erp_code:String(pedidoCliente.erp_code),situacao:pedidoSituacao,forma_pgto:pedidoFormaPgto?parseInt(pedidoFormaPgto):null,prazo_dias:prazo,atualizado_em:new Date().toISOString()},{onConflict:'client_erp_code'})}showToast('Pedido salvo!');setPedidoCliente(null);setPedidoProdutos([]);setPedidoFormaPgto('1');setPedidoSituacao('Pedido S/ NFe');setPedidoVencimento(today());setPedidoDtEntrega('');await loadOrders()}}catch(err){showToast('Erro ao salvar pedido','error')}setPedidoLoading(false)}
 const excluirPedido=async(id)=>{const{error}=await supabase.from('orders').delete().eq('id',id);if(error){showToast('Erro ao excluir pedido','error');return}setOrders(prev=>prev.filter(o=>o.id!==id));showToast('Pedido excluído')}
-const exportarPedidos=async()=>{if(exportingRef.current){return}exportingRef.current=true;const pendentes=orders.filter(o=>o.status==='pendente');if(pendentes.length===0){showToast('Nenhum pedido pendente','error');exportingRef.current=false;return}setExportLoading(true);let ok=0;let erros=0;for(const order of pendentes){try{const res=await fetch(`${EGESTOR_API}?action=criar_venda`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codContato:order.client_erp_code,nomeContato:order.client_name,route:order.route,user_id:user.id,produtos:order.produtos.map(p=>({codigo:p.codigo,quant:p.quant,preco:p.precoVenda,vDesc:p.vDesc||0})),codFormaPgto:order.forma_pgto,vencimento:order.vencimento||today(),situacaoOS:order.situacao,dtEntrega:order.dt_entrega||dtEntrega||new Date(Date.now()+86400000).toISOString().split('T')[0],gpsLat:order.gps_lat||null,gpsLng:order.gps_lng||null})});const result=await res.json();if(result.codigo){const{data:saleData}=await supabase.from('sales').select('id').eq('erp_code',result.codigo).single();if(saleData?.id){const items=order.produtos.map(p=>({sale_id:saleData.id,user_id:user.id,client_erp_code:order.client_erp_code,erp_code:p.codigo,descricao:p.descricao,codigo_proprio:p.codigoProprio||'',quant:p.quant,preco:p.precoVenda,vdesc:p.vDesc||0,total:p.precoVenda*p.quant*(1-(p.vDesc||0)/100),date:today()}));await supabase.from('sales_items').insert(items)}await supabase.from('orders').delete().eq('id',order.id);ok++}else{erros++}}catch(err){erros++}}await loadOrders();await loadSales();setExportLoading(false);exportingRef.current=false;if(erros===0){showToast(`${ok} pedido(s) exportado(s)!`)}else{showToast(`${ok} exportado(s), ${erros} com erro`,'error')}}
+const exportarPedidos=async()=>{if(exportingRef.current){return}exportingRef.current=true;const pendentes=orders.filter(o=>o.status==='pendente');if(pendentes.length===0){showToast('Nenhum pedido pendente','error');exportingRef.current=false;return}setExportLoading(true);let ok=0;let erros=0;for(const order of pendentes){try{const res=await fetch(`${EGESTOR_API}?action=criar_venda`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codContato:order.client_erp_code,nomeContato:order.client_name,route:order.route,user_id:user.id,produtos:order.produtos.map(p=>({codigo:p.codigo,quant:p.quant,preco:p.precoVenda,vDesc:p.vDesc||0})),codFormaPgto:order.forma_pgto,vencimento:order.vencimento||today(),situacaoOS:order.situacao,dtEntrega:order.dt_entrega||dtEntrega||new Date(Date.now()+86400000).toISOString().split('T')[0],gpsLat:order.gps_lat||null,gpsLng:order.gps_lng||null})});const result=await res.json();if(result.codigo){const{data:saleData}=await supabase.from('sales').select('id').eq('erp_code',result.codigo).single();if(saleData?.id){await supabase.from('sales').update({dt_entrega:order.dt_entrega||dtEntrega||null}).eq('id',saleData.id);const items=order.produtos.map(p=>({sale_id:saleData.id,user_id:user.id,client_erp_code:order.client_erp_code,erp_code:p.codigo,descricao:p.descricao,codigo_proprio:p.codigoProprio||'',quant:p.quant,preco:p.precoVenda,vdesc:p.vDesc||0,total:p.precoVenda*p.quant*(1-(p.vDesc||0)/100),date:today()}));await supabase.from('sales_items').insert(items)}await supabase.from('orders').delete().eq('id',order.id);ok++}else{erros++}}catch(err){erros++}}await loadOrders();await loadSales();setExportLoading(false);exportingRef.current=false;if(erros===0){showToast(`${ok} pedido(s) exportado(s)!`)}else{showToast(`${ok} exportado(s), ${erros} com erro`,'error')}}
 const abrirEdicaoOrder=async(order)=>{setEditandoOrder(order);setEditOrderProdutos(order.produtos||[]);setEditOrderFormaPgto(String(order.forma_pgto||'1'));setEditOrderSituacao(order.situacao||'Pedido S/ NFe')}
 const salvarEdicaoOrder=async()=>{if(!editandoOrder||editOrderProdutos.length===0){showToast('Adicione ao menos um produto','error');return}const total=editOrderProdutos.reduce((acc,p)=>acc+p.precoVenda*p.quant*(1-(p.vDesc||0)/100),0);const{error}=await supabase.from('orders').update({produtos:editOrderProdutos,forma_pgto:parseInt(editOrderFormaPgto),situacao:editOrderSituacao,total}).eq('id',editandoOrder.id);if(error){showToast('Erro ao salvar','error');return}showToast('Pedido atualizado!');setEditandoOrder(null);await loadOrders()}
 const gerarRelatorio=async()=>{
@@ -704,7 +709,7 @@ if(user?.id&&gpsStatus==='checking'){
     <div style={{color:'#fff',fontSize:14}}>⏳ Verificando localização...</div>
   </div>
 }
-if(user?.id&&permsCarregadas&&!isPrivileged&&!ehEntregador&&(!selectedRoute||!dailyGoal||!dtEntrega)){
+if(user?.id&&permsCarregadas&&fazVendas&&!isPrivileged&&!ehEntregador&&(!selectedRoute||!dailyGoal||!dtEntrega)){
   return<div style={{minHeight:'100vh',background:SURFACE,display:'flex',alignItems:'center',justifyContent:'center',padding:24,fontFamily:"'Inter',system-ui,sans-serif"}}>
     <div style={{background:CARD,borderRadius:16,padding:24,maxWidth:400,width:'100%'}}>
       <div style={{textAlign:'center',marginBottom:20}}>
@@ -763,12 +768,13 @@ return(<div style={{minHeight:'100vh',background:SURFACE,fontFamily:"'Inter',sys
 <button onClick={()=>supabase.auth.signOut()} style={{background:'none',border:`1px solid #ffffff55`,borderRadius:8,padding:'8px 16px',fontSize:13,color:'#e2e8f0',cursor:'pointer',fontWeight:600,marginLeft:'auto'}}>Sair</button></div>
 </div>
 <div style={{position:'fixed',bottom:0,left:0,right:0,background:CARD,borderTop:`1px solid ${BORDER}`,display:'flex',justifyContent:'space-around',padding:'6px 0',zIndex:100}}>
-{!ehEntregador&&<Tab id="dashboard" label="Dashboard" icon="📊"/>}
-<Tab id="clientes" label="Clientes" icon="👥"/>
+{fazVendas&&!ehEntregador&&<Tab id="dashboard" label="Dashboard" icon="📊"/>}
+{fazVendas&&<Tab id="clientes" label="Clientes" icon="👥"/>}
 {ehEntregador&&<Tab id="entregas" label="Entregas" icon="🚚"/>}
-{!ehEntregador&&<Tab id="vendas" label="Vendas" icon="💰"/>}
-{!ehEntregador&&<Tab id="pedido" label="Pedido" icon="🛒" badge={orders.length}/>}
-{!ehEntregador&&<Tab id="relatorio" label="Relatório" icon="📈"/>}
+{fazVendas&&!ehEntregador&&<Tab id="vendas" label="Vendas" icon="💰"/>}
+{fazVendas&&!ehEntregador&&<Tab id="pedido" label="Pedido" icon="🛒" badge={orders.length}/>}
+{fazVendas&&!ehEntregador&&<Tab id="relatorio" label="Relatório" icon="📈"/>}
+{veProducao&&<Tab id="producao" label="Produção" icon="🍞"/>}
 {(usa3?pode('usuarios.ver'):isPrivileged)&&<Tab id="config" label="Config" icon="⚙️"/>}
 </div>
 <div style={{padding:'12px 16px'}}>
@@ -1426,6 +1432,7 @@ return view==='compras'?<>
 </>
 })()}
 </div>}
+{activeTab==='producao'&&veProducao&&<Producao supabase={supabase} pode={pode} showToast={showToast}/>}
 {activeTab==='config'&&(usa3?pode('usuarios.ver'):isPrivileged)&&<div>
 {usa3?<GestaoUsuarios supabase={supabase} functionsUrl={FUNCTIONS_URL} pode={pode} userId={user?.id} showToast={showToast}/>:isAdmin&&<>
 <div style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:12,padding:'14px 16px',marginBottom:12}}>

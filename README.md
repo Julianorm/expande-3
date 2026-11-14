@@ -15,6 +15,7 @@ Nova versão do eXpande, desenvolvida em paralelo à 2.0 (repositório `Julianor
 | 002 | `002_permissao_data_entrega.sql` | Separa "meta do dia" de "data de entrega"; Vendedor já vem com a de data |
 | 003 | `003_pedido_data_entrega.sql` | Coluna opcional `orders.dt_entrega` (entrega futura por pedido). **Aplicar antes de publicar o app.** |
 | 004 | `004_cliente_preferencias.sql` | Tabela nova `cliente_preferencias`: última escolha de cada cliente no pedido (tipo, forma de pagamento, prazo em dias) |
+| 005 | `005_producao.sql` | Módulo de Produção: `prod_linhas`, `prod_produtos`, `prod_calendario`, `prod_planos`, `prod_plano_itens` + coluna `sales.dt_entrega`. Já vem com as linhas (rendimentos) e o calendário de rotas de nov/2026 |
 
 ## Edge Functions
 Cópia fiel (conferida byte a byte em 11/11/2026) das funções do banco real `crm-rota`, em `supabase/functions/`. Publicar no banco de testes com **Verify JWT desligado**, como na 2.0. `teste-token` não foi copiada (era só teste).
@@ -35,3 +36,12 @@ Cópia fiel (conferida byte a byte em 11/11/2026) das funções do banco real `c
 - Usuário não é excluído: é **desativado** (o login fica bloqueado e o histórico continua).
 - Ninguém muda o próprio perfil nem se desativa.
 - Perfis e permissões são gravados direto nas tabelas, protegidas por RLS (permissão `usuarios.perfis`).
+
+## Produção (3.0)
+- Aba **Produção** (`src/pages/Producao.js`) para quem tem `producao.ver`. Quem não vende (ex.: Padeiro) entra direto nela, sem a tela de rota/meta.
+- **Plano do dia**: produz no dia D para a entrega de D+2 (quinta → segunda + terça; sexta sem pão).
+  Sugestão = pedidos/vendas firmes para a(s) entrega(s) + média das rotas que ainda não venderam
+  (vendas do eXpande no mesmo dia da semana, últimas 8 semanas) + margem da rota. Receitas por linha com aviso de limite.
+- Fluxo: Calcular → ajustar o planejado → **Aprovar** (`producao.editar`) → padeiro registra o **produzido** e conclui (`producao.registrar`).
+- **Configuração**: qual produto é de qual linha (massa), rendimento por receita, limite por dia e calendário de rotas.
+- A exportação de pedidos passa a gravar `sales.dt_entrega`, usada para saber quais rotas já venderam para cada entrega.
