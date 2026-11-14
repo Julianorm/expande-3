@@ -748,53 +748,6 @@ if(user?.id&&permsCarregadas&&!isPrivileged&&!ehEntregador&&(!selectedRoute||!da
     </div>
   </div>
 }
-if(user?.id&&gpsStatus==='checking'){
-  return<div style={{minHeight:'100vh',background:'#1e293b',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Inter',system-ui,sans-serif"}}>
-    <div style={{color:'#fff',fontSize:14}}>⏳ Verificando localização...</div>
-  </div>
-}
-if(user?.id&&permsCarregadas&&!isPrivileged&&!ehEntregador&&(!selectedRoute||!dailyGoal||!dtEntrega)){
-  return<div style={{minHeight:'100vh',background:SURFACE,display:'flex',alignItems:'center',justifyContent:'center',padding:24,fontFamily:"'Inter',system-ui,sans-serif"}}>
-    <div style={{background:CARD,borderRadius:16,padding:24,maxWidth:400,width:'100%'}}>
-      <div style={{textAlign:'center',marginBottom:20}}>
-        <div style={{fontSize:36,marginBottom:8}}>🌅</div>
-        <div style={{fontWeight:800,fontSize:18,color:TEXT}}>Configurar o dia</div>
-      </div>
-      <div style={{marginBottom:12}}>
-        <label style={{fontSize:11,fontWeight:600,color:MUTED,display:'block',marginBottom:4}}>ROTA</label>
-        <select value={selectedRoute} onChange={e=>{setSelectedRoute(e.target.value);setDailyGoal('');setDtEntrega('')}} style={{width:'100%',border:`1px solid ${BORDER}`,borderRadius:8,padding:'10px 12px',fontSize:16,background:SURFACE,boxSizing:'border-box'}}>
-          <option value="">Selecionar…</option>
-          {routes.map(r=><option key={r} value={r}>{r}</option>)}
-        </select>
-      </div>
-      {selectedRoute&&!podeMetas&&<div style={{background:SURFACE,border:`1px solid ${BORDER}`,borderRadius:10,padding:16,textAlign:'center'}}>
-        <div style={{fontSize:28,marginBottom:6}}>⏳</div>
-        <div style={{fontWeight:700,fontSize:14,color:TEXT,marginBottom:4}}>Aguardando o escritório</div>
-        <div style={{fontSize:13,color:MUTED,marginBottom:12}}>A meta e a data de entrega da rota {selectedRoute} ainda não foram definidas para hoje.</div>
-        <button onClick={()=>loadGoal(selectedRoute)} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:8,padding:'12px 0',fontWeight:700,fontSize:14,cursor:'pointer'}}>🔄 Verificar de novo</button>
-      </div>}
-      {selectedRoute&&podeMetas&&<>
-        <div style={{marginBottom:12}}>
-          <label style={{fontSize:11,fontWeight:600,color:MUTED,display:'block',marginBottom:4}}>META DO DIA (R$)</label>
-          <input type="number" placeholder="0,00" value={goalInput} onChange={e=>setGoalInput(e.target.value)} style={{width:'100%',border:`1px solid ${BORDER}`,borderRadius:8,padding:'10px 12px',fontSize:16,boxSizing:'border-box',textAlign:'center'}}/>
-        </div>
-        <div style={{marginBottom:20}}>
-          <label style={{fontSize:11,fontWeight:600,color:MUTED,display:'block',marginBottom:4}}>DATA DE ENTREGA</label>
-          <input type="date" value={dtEntregaInput||''} onChange={e=>setDtEntregaInput(e.target.value)} style={{width:'100%',border:`1px solid ${BORDER}`,borderRadius:8,padding:'10px 12px',fontSize:16,boxSizing:'border-box',textAlign:'center'}}/>
-        </div>
-        <button onClick={async()=>{
-          if(!goalInput||isNaN(parseFloat(goalInput))){showToast('Informe a meta do dia.','error');return}
-          const dt=dtEntregaInput||new Date(Date.now()+86400000).toISOString().split('T')[0]
-          await handleSetGoal(dt)
-          await handleSetDtEntrega(dt)
-        }} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:8,padding:'14px 0',fontWeight:800,fontSize:15,cursor:'pointer'}}>
-          🚀 Começar o Dia
-        </button>
-      </>}
-      <button onClick={()=>supabase.auth.signOut()} style={{width:'100%',background:'none',border:'none',color:MUTED,fontWeight:600,fontSize:13,cursor:'pointer',marginTop:16}}>Sair</button>
-    </div>
-  </div>
-}
 return(<div style={{minHeight:'100vh',background:SURFACE,fontFamily:"'Inter',system-ui,sans-serif",color:TEXT,paddingBottom:72}}>
 <div style={{background:'#1e293b',borderBottom:`1px solid ${BORDER}`,padding:'0 16px',position:'sticky',top:0,zIndex:100}}>
 <div style={{display:'flex',alignItems:'center',gap:8,height:52}}>
