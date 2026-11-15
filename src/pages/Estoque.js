@@ -60,6 +60,14 @@ export default function Estoque({ supabase, pode, showToast }) {
       const { data: its } = await supabase.from('estoque_contagem_itens').select('*').eq('contagem_id', c.id)
       for (const i of its || []) v[i.erp_code] = { embalado: Number(i.embalado), nao_embalado: Number(i.nao_embalado), descricao: i.descricao }
       for (const i of its || []) ex.push({ erp_code: Number(i.erp_code), descricao: i.descricao || `Produto ${i.erp_code}` })
+    } else {
+      // Contagem nova: já traz os produtos contados na última contagem (ex.: biscoitos e roscas
+      // acrescentados à mão), para não precisar incluir de novo todo dia. Valores começam vazios.
+      const { data: ant } = await supabase.from('estoque_contagens').select('id').lt('data', data).order('data', { ascending: false }).limit(1)
+      if (ant?.[0]) {
+        const { data: its } = await supabase.from('estoque_contagem_itens').select('erp_code,descricao').eq('contagem_id', ant[0].id)
+        for (const i of its || []) ex.push({ erp_code: Number(i.erp_code), descricao: i.descricao || `Produto ${i.erp_code}` })
+      }
     }
     setValores(v); setExtras(ex)
     const { data: h } = await supabase.from('estoque_contagens').select('id,data,status,fechado_em').order('data', { ascending: false }).limit(10)
@@ -116,6 +124,12 @@ export default function Estoque({ supabase, pode, showToast }) {
     await carregar()
   }
 
+  const removerExtra = async (cod) => {
+    setExtras(prev => prev.filter(e => e.erp_code !== cod))
+    setValores(prev => { const c = { ...prev }; delete c[cod]; return c })
+    if (contagem?.id) await supabase.from('estoque_contagem_itens').delete().eq('contagem_id', contagem.id).eq('erp_code', cod)
+    setAlterado(true)
+  }
   const abrirBusca = async () => {
     setMostrarBusca(true)
     if (todosProdutos.length === 0) {
@@ -167,7 +181,7 @@ export default function Estoque({ supabase, pode, showToast }) {
         {g.itens.map(p => {
           const v = valores[p.erp_code] || {}
           return <div key={p.erp_code} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 0', borderTop: `1px solid ${BORDER}` }}>
-            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT, minWidth: 0 }}>{p.descricao}</span>
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT, minWidth: 0 }}>{p.descricao}{editavel && g.linha === 'Outros produtos' && <button onClick={() => removerExtra(p.erp_code)} title="Tirar da contagem" style={{ background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 11, marginLeft: 4 }}>✕</button>}</span>
             {editavel
               ? <><input type="number" inputMode="numeric" placeholder="0" style={numInput} value={v.embalado ?? ''} onChange={e => mudar(p, 'embalado', e.target.value)} />
                 <input type="number" inputMode="numeric" placeholder="0" style={{ ...numInput, width: 78 }} value={v.nao_embalado ?? ''} onChange={e => mudar(p, 'nao_embalado', e.target.value)} /></>
