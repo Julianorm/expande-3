@@ -71,19 +71,18 @@ export async function calcularSugestao(supabase, dataProducao, { linhas, produto
   const itensPorVenda = new Map()
   for (const it of itens) { if (!itensPorVenda.has(it.sale_id)) itensPorVenda.set(it.sale_id, []); itensPorVenda.get(it.sale_id).push(it) }
 
-  const firme = new Map()     // erp_code -> qtd
-  const estimado = new Map()  // erp_code -> qtd
-  const rotasInfo = []        // explicação por entrega/rota
   const soma = (m, k, q) => m.set(k, (m.get(k) || 0) + q)
+  const diasComEntrega = new Set(cal.map(c => c.dia_entrega))
 
-  for (const E of entregas) {
+  // Demanda de uma data de entrega: firmes (vendas/pedidos) + média das rotas que ainda não venderam.
+  const demanda = (E, info) => {
+    const firme = new Map(), estimado = new Map()
     const e = dt(E).getDay()
     const rotasDoDia = cal.filter(c => c.dia_entrega === e)
     // Data de venda que corresponde a esta entrega, por rota.
     const dataVendaDe = c => somaDias(E, -((e - c.dia_venda + 7) % 7))
     const rotaDaEntrega = new Map(rotasDoDia.map(c => [c.rota, c]))
     const vendeu = new Set()
-
     // Firmes: vendas exportadas com dt_entrega = E; ou (sem dt_entrega) vendidas no dia de venda da rota.
     for (const v of vendas) {
       const c = rotaDaEntrega.get(v.route)
@@ -100,14 +99,13 @@ export async function calcularSugestao(supabase, dataProducao, { linhas, produto
       vendeu.add(o.route)
       for (const p of o.produtos || []) if (prodMap.has(Number(p.codigo))) soma(firme, Number(p.codigo), Number(p.quant) || 0)
     }
-
     // Estimado: rotas do calendário que ainda não venderam para E.
     for (const c of rotasDoDia) {
-      if (vendeu.has(c.rota)) { rotasInfo.push({ entrega: E, rota: c.rota, situacao: 'vendida' }); continue }
+      if (vendeu.has(c.rota)) { info?.push({ entrega: E, rota: c.rota, situacao: 'vendida' }); continue }
       const alvo = dataVendaDe(c)
       const historico = vendas.filter(v => v.route === c.rota && v.date < dataProducao && v.date !== alvo && dt(v.date).getDay() === c.dia_venda)
       const dias = new Set(historico.map(v => v.date))
-      if (dias.size === 0) { rotasInfo.push({ entrega: E, rota: c.rota, situacao: 'sem histórico' }); continue }
+      if (dias.size === 0) { info?.push({ entrega: E, rota: c.rota, situacao: 'sem histórico' }); continue }
       const totais = new Map()
       for (const v of historico) for (const it of itensPorVenda.get(v.id) || []) if (prodMap.has(Number(it.erp_code))) soma(totais, Number(it.erp_code), Number(it.quant) || 0)
       const fator = (1 + (Number(c.margem) || 0) / 100) / dias.size
@@ -115,10 +113,43 @@ export async function calcularSugestao(supabase, dataProducao, { linhas, produto
         const linha = linhaMap.get(prodMap.get(cod).linha)
         if (linha && !linha.so_pedido) soma(estimado, cod, q * fator)
       }
-      rotasInfo.push({ entrega: E, rota: c.rota, situacao: `média de ${dias.size} ${dias.size === 1 ? 'dia' : 'dias'} +${num(c.margem)}%` })
+      info?.push({ entrega: E, rota: c.rota, situacao: `média de ${dias.size} ${dias.size === 1 ? 'dia' : 'dias'} +${num(c.margem)}%` })
     }
+    return { firme, estimado }
   }
 
+  const firme = new Map(), estimado = new Map(), rotasInfo = []
+  for (const E of entregas) {
+    const d = demanda(E, rotasInfo)
+    for (const [k, q] of d.firme) soma(firme, k, q)
+    for (const [k, q] of d.estimado) soma(estimado, k, q)
+  }
+
+  // Estoque: última contagem fechada antes do dia da produção (até 4 dias antes).
+  // A contagem do dia C já separou a carga de C+1; o que ainda vai sair entre C+2 e a véspera
+  // da primeira entrega deste plano fica reservado. Só a sobra é descontada da produção.
+  const estoqueLivre = new Map()
+  let estoqueInfo = null
+  if (entregas.length) {
+    const { data: cont } = await supabase.from('estoque_contagens').select('id,data')
+      .eq('status', 'fechada').lt('data', dataProducao).gte('data', somaDias(dataProducao, -4))
+      .order('data', { ascending: false }).limit(1)
+    const C = cont?.[0]
+    if (C) {
+      const { data: its } = await supabase.from('estoque_contagem_itens').select('erp_code,total').eq('contagem_id', C.id)
+      const contado = new Map((its || []).map(i => [Number(i.erp_code), Number(i.total) || 0]))
+      const reservadas = []
+      for (let E = somaDias(C.data, 2); E < entregas[0]; E = somaDias(E, 1)) if (diasComEntrega.has(dt(E).getDay())) reservadas.push(E)
+      const reservado = new Map()
+      for (const E of reservadas) {
+        const d = demanda(E, null)
+        for (const [k, q] of d.firme) soma(reservado, k, q)
+        for (const [k, q] of d.estimado) soma(reservado, k, q)
+      }
+      for (const [k, q] of contado) estoqueLivre.set(k, Math.max(0, q - (reservado.get(k) || 0)))
+      estoqueInfo = { data: C.data, reservadas }
+    }
+  }
   // Monta os itens do plano (só produtos cadastrados em linhas ativas).
   const { data: nomes } = await supabase.from('products').select('erp_code,descricao').in('erp_code', [...prodMap.keys()])
   const descr = new Map((nomes || []).map(n => [Number(n.erp_code), n.descricao]))
@@ -127,10 +158,11 @@ export async function calcularSugestao(supabase, dataProducao, { linhas, produto
     if (!linhaMap.has(p.linha)) continue
     // arredonda para cima, ignorando sobras de ponto flutuante (110 × 1,10 = 121,0000000001)
     const cima = v => Math.ceil((v || 0) - 1e-6)
-    const f = cima(firme.get(cod)), es = cima(estimado.get(cod))
-    lista.push({ erp_code: cod, descricao: descr.get(cod) || `Produto ${cod}`, linha: p.linha, firme: f, estimado: es, sugerido: f + es, planejado: f + es, produzido: null })
+    const f = cima(firme.get(cod)), es = cima(estimado.get(cod)), est = Math.floor((estoqueLivre.get(cod) || 0) + 1e-6)
+    const sug = Math.max(0, f + es - est)
+    lista.push({ erp_code: cod, descricao: descr.get(cod) || `Produto ${cod}`, linha: p.linha, firme: f, estimado: es, estoque: est, sugerido: sug, planejado: sug, produzido: null })
   }
-  return { entregas, itens: lista, rotasInfo }
+  return { entregas, itens: lista, rotasInfo, estoqueInfo }
 }
 
 // ---------------------------------------------------------------------------
@@ -159,12 +191,13 @@ function TabelaPlano({ itens, linhas, editarPlanejado, editarProduzido, onChange
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr style={{ color: MUTED }}>
-            <th style={{ ...cel, textAlign: 'left' }}>Produto</th><th style={cel}>Firme</th><th style={cel}>Estim.</th><th style={cel}>Sugerido</th><th style={cel}>Planejado</th>{(editarProduzido || its.some(i => i.produzido != null)) && <th style={cel}>Produzido</th>}
+            <th style={{ ...cel, textAlign: 'left' }}>Produto</th><th style={cel}>Firme</th><th style={cel}>Estim.</th><th style={cel}>Estoque</th><th style={cel}>Sugerido</th><th style={cel}>Planejado</th>{(editarProduzido || its.some(i => i.produzido != null)) && <th style={cel}>Produzido</th>}
           </tr></thead>
           <tbody>{its.map(i => <tr key={i.erp_code} style={{ borderTop: `1px solid ${BORDER}` }}>
             <td style={{ ...cel, textAlign: 'left', whiteSpace: 'normal', fontWeight: 600, color: TEXT }}>{i.descricao}</td>
             <td style={cel}>{num(i.firme)}</td>
             <td style={{ ...cel, color: MUTED }}>{num(i.estimado)}</td>
+            <td style={{ ...cel, color: i.estoque ? SUCCESS : MUTED }}>{i.estoque ? `−${num(i.estoque)}` : '—'}</td>
             <td style={{ ...cel, fontWeight: 700 }}>{num(i.sugerido)}</td>
             <td style={cel}>{editarPlanejado
               ? <input type="number" inputMode="numeric" style={numInput} value={i.planejado ?? ''} onChange={e => onChange(i.erp_code, 'planejado', e.target.value === '' ? 0 : Number(e.target.value))} />
@@ -174,7 +207,7 @@ function TabelaPlano({ itens, linhas, editarPlanejado, editarProduzido, onChange
               : <span style={{ color: i.produzido != null && i.produzido < i.planejado ? WARNING : SUCCESS, fontWeight: 700 }}>{i.produzido != null ? num(i.produzido) : '—'}</span>}</td>}
           </tr>)}</tbody>
           <tfoot><tr style={{ borderTop: `2px solid ${BORDER}`, color: MUTED }}>
-            <td style={{ ...cel, textAlign: 'left' }}>Total</td><td style={cel}>{num(its.reduce((a, i) => a + i.firme, 0))}</td><td style={cel}>{num(its.reduce((a, i) => a + i.estimado, 0))}</td>
+            <td style={{ ...cel, textAlign: 'left' }}>Total</td><td style={cel}>{num(its.reduce((a, i) => a + i.firme, 0))}</td><td style={cel}>{num(its.reduce((a, i) => a + i.estimado, 0))}</td><td style={cel}>{num(its.reduce((a, i) => a + (i.estoque || 0), 0))}</td>
             <td style={cel}>{num(its.reduce((a, i) => a + i.sugerido, 0))}</td><td style={{ ...cel, color: TEXT, fontWeight: 800 }}>{num(totPlan)}</td>
             {(editarProduzido || its.some(i => i.produzido != null)) && <td style={{ ...cel, color: TEXT, fontWeight: 800 }}>{num(totProd)}</td>}
           </tr></tfoot>
@@ -190,6 +223,7 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
   const [plano, setPlano] = useState(null)       // registro salvo (ou null)
   const [itens, setItens] = useState([])
   const [rotasInfo, setRotasInfo] = useState([])
+  const [estoqueInfo, setEstoqueInfo] = useState(null)
   const [carregando, setCarregando] = useState(false)
   const [calculando, setCalculando] = useState(false)
   const [salvando, setSalvando] = useState(false)
@@ -198,12 +232,12 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
   const podeEditar = pode('producao.editar'), podeRegistrar = pode('producao.registrar')
 
   const carregar = async () => {
-    setCarregando(true); setRotasInfo([]); setAlterado(false)
+    setCarregando(true); setRotasInfo([]); setEstoqueInfo(null); setAlterado(false)
     const { data: p } = await supabase.from('prod_planos').select('*').eq('data_producao', data).maybeSingle()
     setPlano(p || null)
     if (p) {
       const { data: its } = await supabase.from('prod_plano_itens').select('*').eq('plano_id', p.id)
-      setItens((its || []).map(i => ({ ...i, firme: Number(i.firme), estimado: Number(i.estimado), sugerido: Number(i.sugerido), planejado: Number(i.planejado), produzido: i.produzido == null ? null : Number(i.produzido) })))
+      setItens((its || []).map(i => ({ ...i, firme: Number(i.firme), estimado: Number(i.estimado), estoque: Number(i.estoque || 0), sugerido: Number(i.sugerido), planejado: Number(i.planejado), produzido: i.produzido == null ? null : Number(i.produzido) })))
     } else setItens([])
     setCarregando(false)
   }
@@ -215,7 +249,7 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
     setCalculando(true)
     try {
       const r = await calcularSugestao(supabase, data, cadastro)
-      setItens(r.itens); setRotasInfo(r.rotasInfo); setAlterado(true)
+      setItens(r.itens); setRotasInfo(r.rotasInfo); setEstoqueInfo(r.estoqueInfo || { semContagem: true }); setAlterado(true)
       if (r.itens.length === 0) showToast('Nenhum produto cadastrado nas linhas. Configure em Produção → Configuração.', 'error')
     } catch (e) { showToast('Erro ao calcular: ' + e.message, 'error') }
     setCalculando(false)
@@ -228,7 +262,7 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
     setSalvando(true)
     try {
       let id = plano?.id
-      const campos = { data_producao: data, entregas, status, ...(status === 'aprovado' ? { aprovado_em: new Date().toISOString() } : {}) }
+      const campos = { data_producao: data, entregas, status, ...(estoqueInfo ? { contagem_data: estoqueInfo.data || null } : {}), ...(status === 'aprovado' ? { aprovado_em: new Date().toISOString() } : {}) }
       if (id) {
         const { error } = await supabase.from('prod_planos').update(campos).eq('id', id); if (error) throw error
         const { error: e2 } = await supabase.from('prod_plano_itens').delete().eq('plano_id', id); if (e2) throw e2
@@ -236,7 +270,7 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
         const { data: novo, error } = await supabase.from('prod_planos').insert(campos).select('id').single(); if (error) throw error
         id = novo.id
       }
-      const linhasItens = itens.map(i => ({ plano_id: id, erp_code: i.erp_code, descricao: i.descricao, linha: i.linha, firme: i.firme, estimado: i.estimado, sugerido: i.sugerido, planejado: Number(i.planejado) || 0 }))
+      const linhasItens = itens.map(i => ({ plano_id: id, erp_code: i.erp_code, descricao: i.descricao, linha: i.linha, firme: i.firme, estimado: i.estimado, estoque: i.estoque || 0, sugerido: i.sugerido, planejado: Number(i.planejado) || 0 }))
       const { error: e3 } = await supabase.from('prod_plano_itens').insert(linhasItens); if (e3) throw e3
       showToast(status === 'aprovado' ? 'Plano aprovado! O padeiro já pode registrar.' : 'Rascunho salvo.')
       await carregar()
@@ -282,6 +316,7 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
         <span style={{ fontSize: 13, fontWeight: 700 }}>{DIAS[dt(data).getDay()]}</span>
         {status && <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: corStatus[status], border: `1px solid ${corStatus[status]}55`, background: corStatus[status] + '14', borderRadius: 6, padding: '3px 8px' }}>{nomeStatus[status]}</span>}
       </div>
+      {plano?.contagem_data && <div style={{ fontSize: 12, color: SUCCESS, marginTop: 6 }}>📦 Calculado com a contagem de estoque de {curto(plano.contagem_data)}</div>}
       <div style={{ fontSize: 12, color: MUTED, marginTop: 8 }}>
         {entregas.length
           ? <>Atende as entregas de <b style={{ color: TEXT }}>{entregas.map(curto).join(' e ')}</b> (produz hoje, embala amanhã, entrega depois).</>
@@ -300,6 +335,9 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
 
     {rotasInfo.length > 0 && <div style={{ ...card, fontSize: 12 }}>
       <div style={{ fontWeight: 700, marginBottom: 6 }}>Como foi calculado</div>
+      {estoqueInfo && (estoqueInfo.semContagem
+        ? <div style={{ color: WARNING, fontWeight: 600, marginBottom: 6 }}>⚠️ Sem contagem de estoque fechada nos últimos dias: o estoque não foi descontado.</div>
+        : <div style={{ color: SUCCESS, fontWeight: 600, marginBottom: 6 }}>📦 Estoque da contagem de {curto(estoqueInfo.data)}{estoqueInfo.reservadas.length ? `, já reservando o que sai em ${estoqueInfo.reservadas.map(curto).join(' e ')}` : ''}.</div>)}
       {rotasInfo.map((r, k) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '3px 0', borderTop: k ? `1px solid ${BORDER}` : 'none' }}>
         <span>{curto(r.entrega)} · {r.rota}</span>
         <span style={{ color: r.situacao === 'vendida' ? SUCCESS : r.situacao === 'sem histórico' ? DANGER : MUTED, fontWeight: 600 }}>{r.situacao === 'vendida' ? 'pedidos firmes' : r.situacao}</span>

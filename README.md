@@ -16,6 +16,7 @@ Nova versão do eXpande, desenvolvida em paralelo à 2.0 (repositório `Julianor
 | 003 | `003_pedido_data_entrega.sql` | Coluna opcional `orders.dt_entrega` (entrega futura por pedido). **Aplicar antes de publicar o app.** |
 | 004 | `004_cliente_preferencias.sql` | Tabela nova `cliente_preferencias`: última escolha de cada cliente no pedido (tipo, forma de pagamento, prazo em dias) |
 | 005 | `005_producao.sql` | Módulo de Produção: `prod_linhas`, `prod_produtos`, `prod_calendario`, `prod_planos`, `prod_plano_itens` + coluna `sales.dt_entrega`. Já vem com as linhas (rendimentos) e o calendário de rotas de nov/2026 |
+| 006 | `006_estoque_contagem.sql` | Contagem de estoque do fim do dia (`estoque_contagens`, `estoque_contagem_itens`: embalado + não embalado); coluna `estoque` no plano. **Depois da 005.** |
 
 ## Edge Functions
 Cópia fiel (conferida byte a byte em 11/11/2026) das funções do banco real `crm-rota`, em `supabase/functions/`. Publicar no banco de testes com **Verify JWT desligado**, como na 2.0. `teste-token` não foi copiada (era só teste).
@@ -45,3 +46,11 @@ Cópia fiel (conferida byte a byte em 11/11/2026) das funções do banco real `c
 - Fluxo: Calcular → ajustar o planejado → **Aprovar** (`producao.editar`) → padeiro registra o **produzido** e conclui (`producao.registrar`).
 - **Configuração**: qual produto é de qual linha (massa), rendimento por receita, limite por dia e calendário de rotas.
 - A exportação de pedidos passa a gravar `sales.dt_entrega`, usada para saber quais rotas já venderam para cada entrega.
+
+## Estoque (3.0)
+- Aba **Estoque** (`src/pages/Estoque.js`) para quem tem `estoque.contar` ou `estoque.ver`. O Estoquista entra direto nela.
+- **Contagem do fim do dia**, depois de separar a carga do dia seguinte: por produto, **embalado** que sobrou + **não embalado**.
+  Salvar, **Fechar contagem** (`estoque.contar`); reabrir para corrigir só com `estoque.ajustar`. Dá para contar outros produtos (biscoito, rosca…).
+- O **plano de produção** usa a última contagem fechada (até 4 dias antes do dia da produção) e desconta só a **sobra**:
+  do que foi contado no dia C, reserva antes o que ainda sai nas entregas entre C+2 e a véspera da primeira entrega do plano
+  (a carga de C+1 já foi separada). Sugerido = firme + estimado − estoque livre (nunca negativo).

@@ -6,6 +6,7 @@ import{useAuth}from './lib/useAuth'
 import GestaoUsuarios from './pages/Usuarios'
 import MetasDoDia from './pages/MetasDoDia'
 import Producao from './pages/Producao'
+import Estoque from './pages/Estoque'
 const ACCENT='#2563EB',ACCENT_LIGHT='#EFF6FF',SUCCESS='#16A34A',WARNING='#D97706',DANGER='#DC2626',SURFACE='#F8FAFC',CARD='#FFFFFF',BORDER='#E2E8F0',TEXT='#0F172A',MUTED='#64748B'
 const fmt=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
 const today=()=>new Date().toISOString().split('T')[0]
@@ -79,7 +80,8 @@ const podeData=usa3?pode('vendas.data_entrega'):true
 // Quem não trabalha com vendas (ex.: padeiro) não passa pela tela de rota/meta e vai direto ao seu módulo.
 const fazVendas=!usa3||isPrivileged||pode('vendas.lancar')||pode('vendas.ver_proprias')
 const veProducao=usa3&&pode('producao.ver')
-useEffect(()=>{if(permsCarregadas&&!fazVendas&&veProducao)setActiveTab('producao')},[permsCarregadas,fazVendas,veProducao])
+const veEstoque=usa3&&(pode('estoque.ver')||pode('estoque.contar'))
+useEffect(()=>{if(permsCarregadas&&!fazVendas&&(veProducao||veEstoque))setActiveTab(veProducao?'producao':'estoque')},[permsCarregadas,fazVendas,veProducao,veEstoque])
 useEffect(()=>{if(ehEntregador&&activeTab==='dashboard'){setActiveTab('clientes')}},[ehEntregador])
 const[ordemEdit,setOrdemEdit]=useState({})
 const[ordemSaving,setOrdemSaving]=useState(false)
@@ -775,6 +777,7 @@ return(<div style={{minHeight:'100vh',background:SURFACE,fontFamily:"'Inter',sys
 {fazVendas&&!ehEntregador&&<Tab id="pedido" label="Pedido" icon="🛒" badge={orders.length}/>}
 {fazVendas&&!ehEntregador&&<Tab id="relatorio" label="Relatório" icon="📈"/>}
 {veProducao&&<Tab id="producao" label="Produção" icon="🍞"/>}
+{veEstoque&&<Tab id="estoque" label="Estoque" icon="📦"/>}
 {(usa3?pode('usuarios.ver'):isPrivileged)&&<Tab id="config" label="Config" icon="⚙️"/>}
 </div>
 <div style={{padding:'12px 16px'}}>
@@ -1433,6 +1436,7 @@ return view==='compras'?<>
 })()}
 </div>}
 {activeTab==='producao'&&veProducao&&<Producao supabase={supabase} pode={pode} showToast={showToast}/>}
+{activeTab==='estoque'&&veEstoque&&<Estoque supabase={supabase} pode={pode} showToast={showToast}/>}
 {activeTab==='config'&&(usa3?pode('usuarios.ver'):isPrivileged)&&<div>
 {usa3?<GestaoUsuarios supabase={supabase} functionsUrl={FUNCTIONS_URL} pode={pode} userId={user?.id} showToast={showToast}/>:isAdmin&&<>
 <div style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:12,padding:'14px 16px',marginBottom:12}}>
