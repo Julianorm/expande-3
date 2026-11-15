@@ -166,7 +166,8 @@ export async function calcularSugestao(supabase, dataProducao, { linhas, produto
 }
 
 // ---------------------------------------------------------------------------
-function TabelaPlano({ itens, linhas, editarPlanejado, editarProduzido, onChange }) {
+function TabelaPlano({ itens, linhas, produtos = [], editarPlanejado, editarProduzido, onChange }) {
+  const rendProd = new Map(produtos.map(p => [Number(p.erp_code), Number(p.rendimento_receita) || null]))
   const grupos = useMemo(() => {
     const ord = [...linhas].sort((a, b) => a.ordem - b.ordem)
     return ord.map(l => ({ linha: l, itens: itens.filter(i => i.linha === l.nome).sort((a, b) => a.descricao.localeCompare(b.descricao)) })).filter(g => g.itens.length)
@@ -176,7 +177,8 @@ function TabelaPlano({ itens, linhas, editarPlanejado, editarProduzido, onChange
   return grupos.map(({ linha, itens: its }) => {
     const totPlan = its.reduce((a, i) => a + Number(i.planejado || 0), 0)
     const totProd = its.reduce((a, i) => a + Number(i.produzido || 0), 0)
-    const rec = meiaReceita(totPlan / linha.rendimento_receita)
+    // Receitas da massa = soma de (quantidade ÷ rendimento do produto; vazio = padrão da linha)
+    const rec = meiaReceita(its.reduce((a, i) => a + Number(i.planejado || 0) / (rendProd.get(Number(i.erp_code)) || Number(linha.rendimento_receita)), 0))
     const passou = linha.limite_receitas && rec > Number(linha.limite_receitas)
     return <div key={linha.nome} style={card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6, gap: 8 }}>
@@ -344,7 +346,7 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
       </div>)}
     </div>}
 
-    {itens.length > 0 && <TabelaPlano itens={itens} linhas={cadastro.linhas} editarPlanejado={emEdicao} editarProduzido={registrando} onChange={mudar} />}
+    {itens.length > 0 && <TabelaPlano itens={itens} linhas={cadastro.linhas} produtos={cadastro.produtos} editarPlanejado={emEdicao} editarProduzido={registrando} onChange={mudar} />}
 
     {itens.length > 0 && emEdicao && <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
       <button onClick={() => salvarPlano('rascunho')} disabled={salvando} style={{ ...btn(SURFACE, ACCENT), flex: 1, border: `1px solid ${BORDER}` }}>💾 Salvar rascunho</button>
@@ -380,6 +382,13 @@ function Configuracao({ supabase, showToast, cadastro, recarregar }) {
       && (!b || `${p.descricao} ${p.codigo_proprio}`.toLowerCase().includes(b)))
   }, [produtosErp, busca, todos, linhaDe])
 
+  const definirRendimento = async (erp, valor) => {
+    const r = valor === '' ? null : Number(String(valor).replace(',', '.'))
+    if (r !== null && !(r > 0)) { showToast('Rendimento inválido.', 'error'); return }
+    const { error } = await supabase.from('prod_produtos').update({ rendimento_receita: r }).eq('erp_code', erp)
+    if (error) { showToast('Erro: ' + error.message, 'error'); return }
+    await recarregar()
+  }
   const definirLinha = async (erp, linha) => {
     const { error } = linha
       ? await supabase.from('prod_produtos').upsert({ erp_code: erp, linha, ativo: true }, { onConflict: 'erp_code' })
@@ -426,7 +435,7 @@ function Configuracao({ supabase, showToast, cadastro, recarregar }) {
     </div>
 
     {aba === 'produtos' && <div>
-      <div style={{ ...card, fontSize: 12, color: MUTED }}>Escolha a linha (massa) de cada produto que a fábrica produz. Produtos sem linha não entram no plano (ex.: bolos e broinha terceirizados).</div>
+      <div style={{ ...card, fontSize: 12, color: MUTED }}>Escolha a linha (massa) de cada produto que a fábrica produz. Produtos sem linha não entram no plano (ex.: bolos e broinha terceirizados).<br />O número ao lado é quantas <b>unidades deste produto</b> uma receita rende. Deixe vazio para usar o padrão da linha (aparece em cinza); preencha quando o peso muda (ex.: Maluquinho 200g rende o dobro do 400g).</div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
         <input style={{ ...input, flex: 1 }} placeholder="Buscar produto…" value={busca} onChange={e => setBusca(e.target.value)} />
       </div>
@@ -434,7 +443,9 @@ function Configuracao({ supabase, showToast, cadastro, recarregar }) {
         <input type="checkbox" checked={todos} onChange={e => setTodos(e.target.checked)} /> Mostrar todos os produtos (não só os de produção própria)
       </label>
       {listaProdutos.map(p => {
-        const atual = linhaDe.get(Number(p.erp_code))?.linha || ''
+        const cad = linhaDe.get(Number(p.erp_code))
+        const atual = cad?.linha || ''
+        const padrao = cadastro.linhas.find(l => l.nome === atual)?.rendimento_receita
         return <div key={p.erp_code} style={{ ...card, padding: '10px 12px', marginBottom: 6, display: 'flex', gap: 8, alignItems: 'center', borderColor: atual ? ACCENT + '55' : BORDER }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{p.descricao}</div>
@@ -444,6 +455,10 @@ function Configuracao({ supabase, showToast, cadastro, recarregar }) {
             <option value="">— não produz</option>
             {linhasOrd.filter(l => l.ativo || l.nome === atual).map(l => <option key={l.nome} value={l.nome}>{l.nome}</option>)}
           </select>
+          {atual && <input key={`${p.erp_code}-${cad?.rendimento_receita ?? ''}`} type="number" inputMode="numeric" title="Unidades por receita (vazio = padrão da linha)"
+            placeholder={padrao ? `${num(padrao)}` : 'un./rec.'} defaultValue={cad?.rendimento_receita ?? ''}
+            onBlur={e => { const v = e.target.value; if (String(v) !== String(cad?.rendimento_receita ?? '')) definirRendimento(Number(p.erp_code), v) }}
+            style={{ ...input, width: 62, padding: '6px 6px', fontSize: 13, textAlign: 'right', borderColor: cad?.rendimento_receita ? ACCENT : BORDER }} />}
         </div>
       })}
       {listaProdutos.length === 0 && <div style={{ textAlign: 'center', color: MUTED, fontSize: 13, padding: 16 }}>Nenhum produto encontrado.</div>}
@@ -507,7 +522,7 @@ function LinhaEdit({ linha, qtd, onSalvar }) {
       <b style={{ fontSize: 14 }}>{linha.nome}</b><span style={{ fontSize: 11, color: MUTED }}>{qtd} produto(s)</span>
     </div>
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-      <div><label style={label}>UN./RECEITA</label><input type="number" style={{ ...input, width: 80 }} value={f.rendimento_receita} onChange={e => setF(p => ({ ...p, rendimento_receita: e.target.value }))} /></div>
+      <div><label style={label}>UN./RECEITA (PADRÃO)</label><input type="number" style={{ ...input, width: 80 }} value={f.rendimento_receita} onChange={e => setF(p => ({ ...p, rendimento_receita: e.target.value }))} /></div>
       <div><label style={label}>LIMITE/DIA</label><input type="number" placeholder="—" style={{ ...input, width: 80 }} value={f.limite_receitas} onChange={e => setF(p => ({ ...p, limite_receitas: e.target.value }))} /></div>
       <div><label style={label}>ORDEM</label><input type="number" style={{ ...input, width: 64 }} value={f.ordem} onChange={e => setF(p => ({ ...p, ordem: e.target.value }))} /></div>
     </div>

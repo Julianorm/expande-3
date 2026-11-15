@@ -17,6 +17,7 @@ Nova versão do eXpande, desenvolvida em paralelo à 2.0 (repositório `Julianor
 | 004 | `004_cliente_preferencias.sql` | Tabela nova `cliente_preferencias`: última escolha de cada cliente no pedido (tipo, forma de pagamento, prazo em dias) |
 | 005 | `005_producao.sql` | Módulo de Produção: `prod_linhas`, `prod_produtos`, `prod_calendario`, `prod_planos`, `prod_plano_itens` + coluna `sales.dt_entrega`. Já vem com as linhas (rendimentos) e o calendário de rotas de nov/2026 |
 | 006 | `006_estoque_contagem.sql` | Contagem de estoque do fim do dia (`estoque_contagens`, `estoque_contagem_itens`: embalado + não embalado); coluna `estoque` no plano. **Depois da 005.** |
+| 007 | `007_rendimento_por_produto.sql` | Rendimento por produto (opcional) em `prod_produtos`: mesma massa, pesos diferentes (ex.: Maluquinho 400g/200g) |
 
 ## Edge Functions
 Cópia fiel (conferida byte a byte em 11/11/2026) das funções do banco real `crm-rota`, em `supabase/functions/`. Publicar no banco de testes com **Verify JWT desligado**, como na 2.0. `teste-token` não foi copiada (era só teste).
@@ -44,7 +45,8 @@ Cópia fiel (conferida byte a byte em 11/11/2026) das funções do banco real `c
   Sugestão = pedidos/vendas firmes para a(s) entrega(s) + média das rotas que ainda não venderam
   (vendas do eXpande no mesmo dia da semana, últimas 8 semanas) + margem da rota. Receitas por linha com aviso de limite.
 - Fluxo: Calcular → ajustar o planejado → **Aprovar** (`producao.editar`) → padeiro registra o **produzido** e conclui (`producao.registrar`).
-- **Configuração**: qual produto é de qual linha (massa), rendimento por receita, limite por dia e calendário de rotas.
+- **Configuração**: qual produto é de qual linha (massa), rendimento padrão da linha, rendimento próprio do produto quando o peso muda, limite por dia e calendário de rotas.
+  Receitas da linha = soma de (quantidade ÷ rendimento do produto, ou o padrão da linha).
 - A exportação de pedidos passa a gravar `sales.dt_entrega`, usada para saber quais rotas já venderam para cada entrega.
 
 ## Estoque (3.0)
