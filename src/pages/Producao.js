@@ -220,6 +220,44 @@ function TabelaPlano({ itens, linhas, produtos = [], editarPlanejado, editarProd
 }
 
 // ---------------------------------------------------------------------------
+// Visão simplificada para quem só executa (padeiro): quanto fazer, quantas receitas, e o produzido.
+export function VisaoPadeiro({ itens, linhas, produtos, editavel, onChange }) {
+  const rendProd = new Map(produtos.map(p => [Number(p.erp_code), Number(p.rendimento_receita) || null]))
+  const grupos = [...linhas].sort((a, b) => a.ordem - b.ordem)
+    .map(l => ({ linha: l, itens: itens.filter(i => i.linha === l.nome && Number(i.planejado) > 0).sort((a, b) => a.descricao.localeCompare(b.descricao)) }))
+    .filter(g => g.itens.length)
+  if (grupos.length === 0) return <div style={{ ...card, textAlign: 'center', color: MUTED, fontSize: 15, padding: 24 }}>Nada para produzir neste dia.</div>
+  return grupos.map(({ linha, itens: its }) => {
+    const rec = meiaReceita(its.reduce((a, i) => a + Number(i.planejado || 0) / (rendProd.get(Number(i.erp_code)) || Number(linha.rendimento_receita)), 0))
+    const feitos = its.filter(i => i.produzido != null).length
+    return <div key={linha.nome} style={{ ...card, padding: 0, overflow: 'hidden' }}>
+      <div style={{ background: ACCENT, color: '#fff', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>{linha.nome}</div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontWeight: 900, fontSize: 24, lineHeight: 1 }}>{num(rec, rec % 1 ? 1 : 0)}</div>
+          <div style={{ fontSize: 11, opacity: .85 }}>receita{rec === 1 ? '' : 's'}</div>
+        </div>
+      </div>
+      {its.map(i => {
+        const ok = i.produzido != null
+        const abaixo = ok && Number(i.produzido) < Number(i.planejado)
+        return <div key={i.erp_code} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderTop: `1px solid ${BORDER}`, background: ok ? (abaixo ? '#FFFBEB' : '#F0FDF4') : CARD }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{i.descricao}</div>
+            <div style={{ fontSize: 14, color: MUTED }}>Fazer <b style={{ color: TEXT, fontSize: 18 }}>{num(i.planejado)}</b></div>
+          </div>
+          {editavel
+            ? <input type="number" inputMode="numeric" placeholder="Feito" value={i.produzido ?? ''}
+                onChange={e => onChange(i.erp_code, 'produzido', e.target.value === '' ? null : Number(e.target.value))}
+                style={{ width: 96, height: 52, fontSize: 22, fontWeight: 800, textAlign: 'center', border: `2px solid ${ok ? (abaixo ? WARNING : SUCCESS) : BORDER}`, borderRadius: 10, boxSizing: 'border-box' }} />
+            : <div style={{ fontSize: 20, fontWeight: 800, color: ok ? (abaixo ? WARNING : SUCCESS) : MUTED, minWidth: 60, textAlign: 'right' }}>{ok ? num(i.produzido) : '—'}</div>}
+        </div>
+      })}
+      <div style={{ padding: '6px 16px', fontSize: 12, color: MUTED, borderTop: `1px solid ${BORDER}` }}>{feitos} de {its.length} lançados</div>
+    </div>
+  })
+}
+
 function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
   const [data, setData] = useState(hojeLocal())
   const [plano, setPlano] = useState(null)       // registro salvo (ou null)
@@ -232,6 +270,7 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
   const [alterado, setAlterado] = useState(false)
   const entregas = entregasDaProducao(data)
   const podeEditar = pode('producao.editar'), podeRegistrar = pode('producao.registrar')
+  const [verComoPadeiro, setVerComoPadeiro] = useState(false)
 
   const carregar = async () => {
     setCarregando(true); setRotasInfo([]); setEstoqueInfo(null); setAlterado(false)
@@ -309,6 +348,9 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
   const nomeStatus = { novo: 'Não salvo', rascunho: 'Rascunho', aprovado: 'Aprovado', concluido: 'Concluído' }
   const emEdicao = podeEditar && (!plano || plano.status === 'rascunho')
   const registrando = podeRegistrar && plano && (plano.status === 'aprovado' || plano.status === 'concluido')
+  // Quem só registra (padeiro) vê a visão simplificada; quem edita pode espiar com o botão.
+  const modoPadeiro = (!podeEditar && podeRegistrar) || (verComoPadeiro && plano && plano.status !== 'rascunho')
+  const aprovadoOuConcluido = plano && (plano.status === 'aprovado' || plano.status === 'concluido')
 
   return <div>
     <div style={card}>
@@ -333,9 +375,22 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
     </button>}
 
     {!carregando && !plano && itens.length === 0 && !emEdicao && entregas.length > 0 &&
-      <div style={{ ...card, textAlign: 'center', color: MUTED, fontSize: 13 }}>O plano deste dia ainda não foi aprovado.</div>}
+      <div style={{ ...card, textAlign: 'center', padding: 24 }}>
+        <div style={{ fontSize: 32, marginBottom: 6 }}>⏳</div>
+        <div style={{ fontWeight: 700, fontSize: 16, color: TEXT, marginBottom: 4 }}>Aguardando o plano ser aprovado</div>
+        <div style={{ fontSize: 13, color: MUTED, marginBottom: 12 }}>Assim que o escritório aprovar, a lista do que fazer aparece aqui.</div>
+        <button onClick={carregar} style={{ ...btn(ACCENT), width: '100%', padding: '14px 0', fontSize: 15 }}>🔄 Verificar de novo</button>
+      </div>}
+    {!carregando && plano?.status === 'rascunho' && !podeEditar &&
+      <div style={{ ...card, textAlign: 'center', padding: 24 }}>
+        <div style={{ fontSize: 32, marginBottom: 6 }}>⏳</div>
+        <div style={{ fontWeight: 700, fontSize: 16, color: TEXT, marginBottom: 4 }}>Plano em preparação</div>
+        <div style={{ fontSize: 13, color: MUTED, marginBottom: 12 }}>O escritório ainda está montando o plano deste dia.</div>
+        <button onClick={carregar} style={{ ...btn(ACCENT), width: '100%', padding: '14px 0', fontSize: 15 }}>🔄 Verificar de novo</button>
+      </div>}
+    {podeEditar && podeRegistrar && aprovadoOuConcluido && <button onClick={() => setVerComoPadeiro(v => !v)} style={{ ...btn('none', ACCENT), width: '100%', fontSize: 12, marginBottom: 8 }}>{verComoPadeiro ? '📋 Ver plano completo' : '👨‍🍳 Ver como o padeiro vê'}</button>}
 
-    {rotasInfo.length > 0 && <div style={{ ...card, fontSize: 12 }}>
+    {!modoPadeiro && rotasInfo.length > 0 && <div style={{ ...card, fontSize: 12 }}>
       <div style={{ fontWeight: 700, marginBottom: 6 }}>Como foi calculado</div>
       {estoqueInfo && (estoqueInfo.semContagem
         ? <div style={{ color: WARNING, fontWeight: 600, marginBottom: 6 }}>⚠️ Sem contagem de estoque fechada nos últimos dias: o estoque não foi descontado.</div>
@@ -346,16 +401,18 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
       </div>)}
     </div>}
 
-    {itens.length > 0 && <TabelaPlano itens={itens} linhas={cadastro.linhas} produtos={cadastro.produtos} editarPlanejado={emEdicao} editarProduzido={registrando} onChange={mudar} />}
+    {modoPadeiro && aprovadoOuConcluido && <VisaoPadeiro itens={itens} linhas={cadastro.linhas} produtos={cadastro.produtos} editavel={registrando} onChange={mudar} />}
+    {!modoPadeiro && itens.length > 0 && (podeEditar || aprovadoOuConcluido) && <TabelaPlano itens={itens} linhas={cadastro.linhas} produtos={cadastro.produtos} editarPlanejado={emEdicao} editarProduzido={registrando} onChange={mudar} />}
 
     {itens.length > 0 && emEdicao && <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
       <button onClick={() => salvarPlano('rascunho')} disabled={salvando} style={{ ...btn(SURFACE, ACCENT), flex: 1, border: `1px solid ${BORDER}` }}>💾 Salvar rascunho</button>
       <button onClick={() => salvarPlano('aprovado')} disabled={salvando} style={{ ...btn(SUCCESS), flex: 1 }}>✅ Aprovar plano</button>
     </div>}
 
-    {registrando && <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-      <button onClick={() => salvarProduzido(false)} disabled={salvando} style={{ ...btn(SURFACE, ACCENT), flex: 1, border: `1px solid ${BORDER}` }}>💾 Salvar produzido</button>
-      {plano.status === 'aprovado' && <button onClick={() => salvarProduzido(true)} disabled={salvando} style={{ ...btn(SUCCESS), flex: 1 }}>🏁 Concluir produção</button>}
+    {registrando && <div style={{ display: 'flex', flexDirection: modoPadeiro ? 'column' : 'row', gap: 8, marginBottom: 12 }}>
+      <button onClick={() => salvarProduzido(false)} disabled={salvando} style={{ ...btn(SURFACE, ACCENT), flex: 1, border: `1px solid ${BORDER}`, ...(modoPadeiro ? { padding: '16px 0', fontSize: 16 } : {}) }}>💾 Salvar produzido</button>
+      {plano.status === 'aprovado' && <button onClick={() => salvarProduzido(true)} disabled={salvando} style={{ ...btn(SUCCESS), flex: 1, ...(modoPadeiro ? { padding: '16px 0', fontSize: 16 } : {}) }}>🏁 Concluir produção</button>}
+      {modoPadeiro && plano.status === 'concluido' && <div style={{ textAlign: 'center', color: SUCCESS, fontWeight: 700, fontSize: 15, padding: 8 }}>✅ Produção concluída</div>}
     </div>}
 
     {podeEditar && plano?.status === 'aprovado' && <button onClick={reabrir} style={{ ...btn('none', MUTED), width: '100%', fontSize: 12 }}>↩ Voltar para rascunho</button>}
