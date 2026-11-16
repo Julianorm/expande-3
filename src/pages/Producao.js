@@ -220,42 +220,32 @@ function TabelaPlano({ itens, linhas, produtos = [], editarPlanejado, editarProd
 }
 
 // ---------------------------------------------------------------------------
-// Visão simplificada para quem só executa (padeiro): quanto fazer, quantas receitas, e o produzido.
+// Visão do padeiro: só o produto, quantas receitas fazer e o produzido.
 export function VisaoPadeiro({ itens, linhas, produtos, editavel, onChange }) {
   const rendProd = new Map(produtos.map(p => [Number(p.erp_code), Number(p.rendimento_receita) || null]))
-  const grupos = [...linhas].sort((a, b) => a.ordem - b.ordem)
-    .map(l => ({ linha: l, itens: itens.filter(i => i.linha === l.nome && Number(i.planejado) > 0).sort((a, b) => a.descricao.localeCompare(b.descricao)) }))
-    .filter(g => g.itens.length)
-  if (grupos.length === 0) return <div style={{ ...card, textAlign: 'center', color: MUTED, fontSize: 15, padding: 24 }}>Nada para produzir neste dia.</div>
-  return grupos.map(({ linha, itens: its }) => {
-    const rec = meiaReceita(its.reduce((a, i) => a + Number(i.planejado || 0) / (rendProd.get(Number(i.erp_code)) || Number(linha.rendimento_receita)), 0))
-    const feitos = its.filter(i => i.produzido != null).length
-    return <div key={linha.nome} style={{ ...card, padding: 0, overflow: 'hidden' }}>
-      <div style={{ background: ACCENT, color: '#fff', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontWeight: 800, fontSize: 18 }}>{linha.nome}</div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontWeight: 900, fontSize: 24, lineHeight: 1 }}>{num(rec, rec % 1 ? 1 : 0)}</div>
-          <div style={{ fontSize: 11, opacity: .85 }}>receita{rec === 1 ? '' : 's'}</div>
-        </div>
-      </div>
-      {its.map(i => {
-        const ok = i.produzido != null
-        const abaixo = ok && Number(i.produzido) < Number(i.planejado)
-        return <div key={i.erp_code} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderTop: `1px solid ${BORDER}`, background: ok ? (abaixo ? '#FFFBEB' : '#F0FDF4') : CARD }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{i.descricao}</div>
-            <div style={{ fontSize: 14, color: MUTED }}>Fazer <b style={{ color: TEXT, fontSize: 18 }}>{num(i.planejado)}</b></div>
-          </div>
-          {editavel
-            ? <input type="number" inputMode="numeric" placeholder="Feito" value={i.produzido ?? ''}
-                onChange={e => onChange(i.erp_code, 'produzido', e.target.value === '' ? null : Number(e.target.value))}
-                style={{ width: 96, height: 52, fontSize: 22, fontWeight: 800, textAlign: 'center', border: `2px solid ${ok ? (abaixo ? WARNING : SUCCESS) : BORDER}`, borderRadius: 10, boxSizing: 'border-box' }} />
-            : <div style={{ fontSize: 20, fontWeight: 800, color: ok ? (abaixo ? WARNING : SUCCESS) : MUTED, minWidth: 60, textAlign: 'right' }}>{ok ? num(i.produzido) : '—'}</div>}
-        </div>
-      })}
-      <div style={{ padding: '6px 16px', fontSize: 12, color: MUTED, borderTop: `1px solid ${BORDER}` }}>{feitos} de {its.length} lançados</div>
+  const rendLinha = new Map(linhas.map(l => [l.nome, Number(l.rendimento_receita)]))
+  const ordem = new Map(linhas.map(l => [l.nome, l.ordem]))
+  const lista = itens.filter(i => Number(i.planejado) > 0)
+    .map(i => ({ ...i, receitas: meiaReceita(Number(i.planejado) / (rendProd.get(Number(i.erp_code)) || rendLinha.get(i.linha) || 1)) }))
+    .sort((a, b) => (ordem.get(a.linha) ?? 999) - (ordem.get(b.linha) ?? 999) || a.descricao.localeCompare(b.descricao))
+  if (lista.length === 0) return <div style={{ ...card, textAlign: 'center', color: MUTED, fontSize: 15, padding: 24 }}>Nada para produzir neste dia.</div>
+  return <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', padding: '10px 16px', fontSize: 12, fontWeight: 700, color: MUTED, background: SURFACE }}>
+      <span style={{ flex: 1 }}>Produto</span><span style={{ width: 84, textAlign: 'center' }}>Receitas</span><span style={{ width: 96, textAlign: 'center' }}>Produzido</span>
     </div>
-  })
+    {lista.map(i => {
+      const ok = i.produzido != null
+      return <div key={i.erp_code} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderTop: `1px solid ${BORDER}`, background: ok ? '#F0FDF4' : CARD }}>
+        <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 16, color: TEXT }}>{i.descricao}</span>
+        <span style={{ width: 84, textAlign: 'center', fontWeight: 900, fontSize: 22, color: ACCENT }}>{num(i.receitas, i.receitas % 1 ? 1 : 0)}</span>
+        {editavel
+          ? <input type="number" inputMode="numeric" placeholder="—" value={i.produzido ?? ''}
+              onChange={e => onChange(i.erp_code, 'produzido', e.target.value === '' ? null : Number(e.target.value))}
+              style={{ width: 96, height: 52, fontSize: 22, fontWeight: 800, textAlign: 'center', border: `2px solid ${ok ? SUCCESS : BORDER}`, borderRadius: 10, boxSizing: 'border-box' }} />
+          : <span style={{ width: 96, textAlign: 'center', fontSize: 20, fontWeight: 800, color: ok ? SUCCESS : MUTED }}>{ok ? num(i.produzido) : '—'}</span>}
+      </div>
+    })}
+  </div>
 }
 
 function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
@@ -351,6 +341,27 @@ function PlanoDoDia({ supabase, pode, showToast, cadastro }) {
   // Quem só registra (padeiro) vê a visão simplificada; quem edita pode espiar com o botão.
   const modoPadeiro = (!podeEditar && podeRegistrar) || (verComoPadeiro && plano && plano.status !== 'rascunho')
   const aprovadoOuConcluido = plano && (plano.status === 'aprovado' || plano.status === 'concluido')
+
+  if (modoPadeiro && !verComoPadeiro) {
+    return <div>
+      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: MUTED }}>DATA</span>
+        <input type="date" value={data} onChange={e => setData(e.target.value)} style={{ ...input, fontSize: 16, fontWeight: 700, flex: 1 }} />
+      </div>
+      {carregando && <div style={{ textAlign: 'center', color: MUTED, padding: 20, fontSize: 14 }}>⏳ Carregando…</div>}
+      {!carregando && !aprovadoOuConcluido && <div style={{ ...card, textAlign: 'center', padding: 24 }}>
+        <div style={{ fontSize: 32, marginBottom: 6 }}>⏳</div>
+        <div style={{ fontWeight: 700, fontSize: 16, color: TEXT, marginBottom: 12 }}>Plano ainda não liberado</div>
+        <button onClick={carregar} style={{ ...btn(ACCENT), width: '100%', padding: '14px 0', fontSize: 15 }}>🔄 Verificar de novo</button>
+      </div>}
+      {!carregando && aprovadoOuConcluido && <VisaoPadeiro itens={itens} linhas={cadastro.linhas} produtos={cadastro.produtos} editavel={registrando} onChange={mudar} />}
+      {!carregando && registrando && <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+        <button onClick={() => salvarProduzido(false)} disabled={salvando} style={{ ...btn(SURFACE, ACCENT), border: `1px solid ${BORDER}`, padding: '16px 0', fontSize: 16 }}>💾 Salvar produzido</button>
+        {plano.status === 'aprovado' && <button onClick={() => salvarProduzido(true)} disabled={salvando} style={{ ...btn(SUCCESS), padding: '16px 0', fontSize: 16 }}>🏁 Concluir produção</button>}
+        {plano.status === 'concluido' && <div style={{ textAlign: 'center', color: SUCCESS, fontWeight: 700, fontSize: 15, padding: 8 }}>✅ Produção concluída</div>}
+      </div>}
+    </div>
+  }
 
   return <div>
     <div style={card}>

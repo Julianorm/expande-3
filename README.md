@@ -45,7 +45,7 @@ Cópia fiel (conferida byte a byte em 11/11/2026) das funções do banco real `c
   Sugestão = pedidos/vendas firmes para a(s) entrega(s) + média das rotas que ainda não venderam
   (vendas do eXpande no mesmo dia da semana, últimas 8 semanas) + margem da rota. Receitas por linha com aviso de limite.
 - Fluxo: Calcular → ajustar o planejado → **Aprovar** (`producao.editar`) → padeiro registra o **produzido** e conclui (`producao.registrar`).
-- **Visão do padeiro** (quem tem `producao.registrar` e não `producao.editar`): por massa, total de **receitas** em destaque; por produto, só **Fazer** e **Produzido**, com campos e botões grandes. Sem colunas de cálculo nem Configuração. Quem edita pode espiar com "Ver como o padeiro vê".
+- **Visão do padeiro** (quem tem `producao.registrar` e não `producao.editar`): só a **data** e uma lista com **Produto · Receitas · Produzido**, com campos e botões grandes. Sem barra de rota/meta, sem colunas de cálculo, sem Configuração. Quem edita pode espiar com "Ver como o padeiro vê".
 - **Configuração**: qual produto é de qual linha (massa), rendimento padrão da linha, rendimento próprio do produto quando o peso muda, limite por dia e calendário de rotas.
   Receitas da linha = soma de (quantidade ÷ rendimento do produto, ou o padrão da linha).
 - A exportação de pedidos passa a gravar `sales.dt_entrega`, usada para saber quais rotas já venderam para cada entrega.

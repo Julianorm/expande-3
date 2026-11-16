@@ -925,7 +925,7 @@ return<div key={prod.codigo} style={{background:noLista?ACCENT_LIGHT:SURFACE,bor
 </div>
 </div>}
 {toast&&<div style={{position:'fixed',top:60,left:16,right:16,zIndex:1000,background:toast.type==='error'?DANGER:SUCCESS,color:'#fff',borderRadius:10,padding:'12px 16px',fontWeight:600,fontSize:13,boxShadow:'0 4px 20px #0003',textAlign:'center'}}>{toast.type==='error'?'❌':'✅'} {toast.msg}</div>}
-{activeTab!=='relatorio'&&<div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+{!['relatorio','producao','estoque'].includes(activeTab)&&<div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
 {routes.length>0&&<div style={{flex:1,minWidth:150,background:CARD,border:`1px solid ${BORDER}`,borderRadius:10,padding:'8px 12px'}}>
 <div style={{fontWeight:700,fontSize:11,marginBottom:3,color:MUTED}}>ROTA DO DIA</div>
 <select value={selectedRoute} onChange={e=>{setSelectedRoute(e.target.value);setDailyGoal('');setDtEntrega('')}} style={{width:'100%',border:'none',background:'transparent',fontWeight:700,fontSize:13,color:TEXT,outline:'none'}}><option value="">Selecionar…</option>
